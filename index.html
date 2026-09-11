@@ -3,9 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kişisel Muhasebe</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%239c27b0'/%3E%3Cpath d='M16 22h32v24H16zM22 18h26v8H22z' fill='white'/%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css">
+    <title>Finora</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%236256d9'/%3E%3Cpath d='M19 15h29v9H28v8h17v8H28v17h-9z' fill='white'/%3E%3Ccircle cx='49' cy='47' r='7' fill='%23c06cff'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="style.css?v=20260911-ui27">
+    <script>
+        document.documentElement.dataset.theme = localStorage.getItem('theme-v2') === 'dark' ? 'dark' : 'light';
+    </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
@@ -22,7 +25,7 @@
         <div class="auth-shell">
             <section class="auth-visual" id="authVisualPanel">
                 <div class="auth-visual-top">
-                    <div class="auth-brand"><i class="fas fa-wallet"></i><span>Kişisel Muhasebe</span></div>
+                    <div class="auth-brand"><span class="finora-logo-mark" aria-hidden="true">F</span><span>Finora</span></div>
                 </div>
                 <div class="auth-visual-copy">
                     <span class="auth-eyebrow">PARANIZIN KONTROLÜ SİZDE</span>
@@ -63,8 +66,8 @@
         <header class="header">
             <div class="header-left">
                 <button id="menuBtn" class="menu-btn"><i class="fas fa-bars"></i></button>
-                <i class="fas fa-wallet header-icon"></i>
-                <h1>Kişisel Muhasebe</h1>
+                <span class="finora-logo-mark header-logo-mark" aria-hidden="true">F</span>
+                <h1>Finora</h1>
             </div>
             <div class="header-right">
                 <button id="newTransactionBtn" class="header-action-btn" title="Yeni İşlem">
@@ -95,6 +98,7 @@
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
         <nav id="sidebar" class="sidebar">
+            <div class="sidebar-brand"><span class="finora-logo-mark" aria-hidden="true">F</span><strong>Finora</strong></div>
             <div class="sidebar-menu">
                 <a href="#dashboard" class="sidebar-link active" data-page="dashboard"><i class="fas fa-home"></i><span>Dashboard</span></a>
                 <a href="#accounts" class="sidebar-link" data-page="accounts"><i class="fas fa-university"></i><span>Hesaplar</span></a>
@@ -102,6 +106,7 @@
                 <a href="#transactions" class="sidebar-link" data-page="transactions"><i class="fas fa-list"></i><span>İşlemler</span></a>
                 <a href="#goals" class="sidebar-link" data-page="goals"><i class="fas fa-bullseye"></i><span>Hedefler</span></a>
                 <a href="#reports" class="sidebar-link" data-page="reports"><i class="fas fa-chart-bar"></i><span>Raporlar</span></a>
+                <a href="#finance-assistant" class="sidebar-link assistant-nav-link" data-page="dashboard" data-assistant-target="true"><i class="fas fa-sparkles"></i><span>Finans Asistanı</span><b>AI</b></a>
                 <a href="#settings" class="sidebar-link" data-page="settings"><i class="fas fa-cog"></i><span>Ayarlar</span></a>
             </div>
         </nav>
@@ -153,7 +158,69 @@
                     <div class="stat-card income"><h3>Bu Ay Gelir</h3><p id="totalIncome">₺0.00</p><i class="fas fa-arrow-up"></i></div>
                     <div class="stat-card expense"><h3>Bu Ay Masraf</h3><p id="totalExpense">₺0.00</p><i class="fas fa-arrow-down"></i></div>
                     <div class="stat-card savings"><h3>Tasarruf</h3><p id="savingsRate">%0</p><i class="fas fa-piggy-bank"></i></div>
+                    <div class="stat-card installment stat-card-action" id="upcomingInstallmentsCard" role="button" tabindex="0" aria-label="Bu ay gelecek taksitleri görüntüle"><h3>Bu Ay Gelecek Taksit</h3><p id="upcomingInstallments">₺0.00</p><small>Kredi kartlarına göre görüntüle</small><i class="fas fa-calendar-check"></i></div>
                 </div>
+
+                <section class="balance-forecast" aria-labelledby="balanceForecastTitle">
+                    <div class="forecast-header">
+                        <div>
+                            <span class="section-eyebrow">GELECEK BAKİYE</span>
+                            <h2 id="balanceForecastTitle">30 günlük bakiye tahmini</h2>
+                            <p>Planlanmış gelir ve ödemeler mevcut bakiyenize göre hesaplanır.</p>
+                        </div>
+                        <div class="forecast-result">
+                            <span id="forecastDateLabel">30 gün sonra</span>
+                            <strong id="forecastBalance">₺0.00</strong>
+                        </div>
+                    </div>
+                    <div class="forecast-flow">
+                        <div class="forecast-start"><span>Bugün</span><strong id="forecastStartingBalance">₺0.00</strong></div>
+                        <div class="forecast-line" aria-hidden="true"><i></i></div>
+                        <div class="forecast-events" id="forecastEvents"><p class="empty-state">Önümüzdeki 30 gün için planlanmış hareket yok.</p></div>
+                        <div class="forecast-end"><span>Tahmini bakiye</span><strong id="forecastEndingBalance">₺0.00</strong></div>
+                    </div>
+                </section>
+
+                <section id="finance-assistant" class="finance-assistant" aria-labelledby="financeAssistantTitle">
+                    <div class="assistant-header">
+                        <div class="assistant-avatar"><i class="fas fa-sparkles"></i></div>
+                        <div>
+                            <span class="section-eyebrow">FINORA INTELLIGENCE</span>
+                            <h2 id="financeAssistantTitle">Yapay zekâ finans asistanı</h2>
+                            <p>Finans verilerinizi analiz ederek kısa ve anlaşılır yanıtlar verir.</p>
+                        </div>
+                    </div>
+                    <div class="assistant-suggestions" aria-label="Önerilen sorular">
+                        <button type="button" class="assistant-suggestion" data-question="Bu ay param neden azaldı?">Bu ay param neden azaldı?</button>
+                        <button type="button" class="assistant-suggestion" data-question="Bu ay 5000 TL biriktirebilir miyim?">₺5.000 biriktirebilir miyim?</button>
+                    </div>
+                    <form id="assistantForm" class="assistant-form">
+                        <input id="assistantQuestion" type="text" autocomplete="off" placeholder="Finansların hakkında bir soru sor..." aria-label="Finans asistanına soru sor">
+                        <button type="submit" aria-label="Soruyu gönder"><i class="fas fa-arrow-up"></i></button>
+                    </form>
+                    <div id="assistantResponse" class="assistant-response" aria-live="polite">
+                        <i class="fas fa-lightbulb"></i><span>Örneğin “Bu ay param neden azaldı?” diye sorabilirsin.</span>
+                    </div>
+                </section>
+
+                <section class="finance-calendar" aria-labelledby="financeCalendarTitle">
+                    <div class="calendar-header">
+                        <div>
+                            <span class="section-eyebrow">AYLIK PLAN</span>
+                            <h2 id="financeCalendarTitle">Finans Takvimi</h2>
+                        </div>
+                        <div class="calendar-legend" aria-label="Takvim açıklaması">
+                            <span><i class="calendar-dot current"></i> Mevcut</span>
+                            <span><i class="calendar-dot recurring"></i> Tekrarlayan</span>
+                            <span><i class="calendar-dot installment"></i> Taksit</span>
+                        </div>
+                    </div>
+                    <div id="financeCalendar" class="calendar-grid" role="grid" aria-label="Aylık finans takvimi"></div>
+                    <div class="calendar-day-detail">
+                        <h3 id="calendarSelectedDate">Gün seçin</h3>
+                        <div id="calendarDayItems"><p class="empty-state">Takvimden bir gün seçerek işlemleri görüntüleyin.</p></div>
+                    </div>
+                </section>
 
                 <div class="account-selector">
                     <h3>Bakiyede Gösterilecek TL Hesapları</h3>
@@ -230,6 +297,15 @@
                     <div class="form-group"><label>Kategori</label><select id="category" required><option value="">Kategori Seçin</option></select></div>
                     <div class="form-group"><label>Açıklama</label><input type="text" id="description" placeholder="Açıklama girin"></div>
                     <div class="form-group"><label>Tarih</label><input type="date" id="date" required></div>
+                    <div id="creditInstallmentDetails" class="credit-card-details" hidden>
+                        <strong class="credit-section-title">Taksitli işlem</strong>
+                        <label class="checkbox-label"><input type="checkbox" id="isInstallment"> Bu işlemi taksitlendir</label>
+                        <div id="installmentOptions" class="installment-options" hidden>
+                            <div class="form-group"><label>Taksit sayısı</label><input type="number" id="installmentCount" min="2" max="60" value="2"></div>
+                            <div class="form-group"><label>Faiz oranı (%)</label><input type="number" id="installmentInterestRate" min="0" max="100" step="0.01" value="0" placeholder="Örn: 2.50"></div>
+                            <small>Faiz, alışveriş tutarına tek seferlik toplam oran olarak uygulanır.</small>
+                        </div>
+                    </div>
                     <div class="recurring-section">
                         <label class="checkbox-label"><input type="checkbox" id="isRecurring"> Tekrarlayan işlem olarak kaydet</label>
                         <div id="recurringOptions" class="recurring-options" hidden>
@@ -255,7 +331,7 @@
                     <div id="receiptPreview" style="margin-top:10px;"></div>
                     <div id="voiceResult" style="margin-top:10px;"></div>
 
-                    <button type="submit" class="submit-btn"><i class="fas fa-save"></i> Kaydet</button>
+                    <button type="submit" id="transactionSubmitBtn" class="submit-btn"><i class="fas fa-save"></i> Kaydet</button>
                 </form>
             </div>
 
@@ -295,6 +371,10 @@
                             <option value="bank">🏦 Banka</option>
                             <option value="cash">💵 Nakit</option>
                             <option value="credit">💳 Kredi Kartı</option>
+                            <option value="ewallet">📱 E-cüzdan</option>
+                            <option value="investment">📈 Yatırım</option>
+                            <option value="crypto">₿ Kripto</option>
+                            <option value="debt">🤝 Borç</option>
                         </select></div>
                         <div class="form-group"><label>Para Birimi</label><select id="accountCurrency" required>
                             <option value="TRY">₺ - Türk Lirası</option>
@@ -308,6 +388,14 @@
                             <div class="form-group"><label>Hesap Rengi</label><input type="color" id="accountColor" value="#4CAF50"></div>
                         </div>
                         <div class="form-group" id="accountBalanceGroup"><label>Başlangıç Bakiyesi</label><input type="number" id="accountBalance" step="0.01" placeholder="0.00"><small id="balanceHint">Pozitif bakiye girin (0 olabilir)</small></div>
+                        <div id="creditCardDetails" class="credit-card-details" hidden>
+                            <strong class="credit-section-title">Kart ayarları</strong>
+                            <div class="form-group"><label>Kart Limiti (₺)</label><input type="number" id="accountCreditLimit" min="0.01" step="0.01" placeholder="Örn: 25000"></div>
+                            <div class="form-group"><label>Ekstre kesim günü</label><input type="number" id="accountStatementDay" min="1" max="31" placeholder="15"></div>
+                            <div class="form-group"><label>Son ödeme günü</label><input type="number" id="accountDueDay" min="1" max="31" placeholder="25"></div>
+                            <div class="form-group"><label>Asgari ödeme oranı (%)</label><input type="number" id="accountMinimumPaymentRate" min="0" max="100" step="0.1" value="20"></div>
+                            <small>Kart borcu işlemlerle oluşur. Taksit ve faiz bilgilerini hesabı oluşturduktan sonra <strong>Yeni İşlem</strong> ekranında, bu kartı seçerek girebilirsiniz.</small>
+                        </div>
                         <!-- Döviz/Altın için alış maliyeti bilgileri -->
                         <div id="investmentDetails" style="display:none;">
                             <div class="form-group"><label>Aldığınız Miktar / Adet</label><input type="number" id="accountQuantity" step="0.0001" min="0.0001" placeholder="Örn: 100"></div>
@@ -332,7 +420,10 @@
                             <option value="bank">🏦 Banka</option>
                             <option value="cash">💵 Nakit</option>
                             <option value="credit">💳 Kredi Kartı</option>
+                            <option value="ewallet">📱 E-cüzdan</option>
                             <option value="investment">📈 Yatırım</option>
+                            <option value="crypto">₿ Kripto</option>
+                            <option value="debt">🤝 Borç</option>
                         </select></div>
                         <div class="form-group"><label>Para Birimi</label><select id="editAccountCurrency" required>
                             <option value="TRY">₺ - Türk Lirası</option>
@@ -346,6 +437,12 @@
                             <div class="form-group"><label>Hesap Rengi</label><input type="color" id="editAccountColor" value="#4CAF50"></div>
                         </div>
                         <div class="form-group" id="editAccountBalanceGroup"><label>Bakiye</label><input type="number" id="editAccountBalance" step="0.01" placeholder="0.00"></div>
+                        <div id="editCreditCardDetails" class="credit-card-details" hidden>
+                            <div class="form-group"><label>Kart Limiti (₺)</label><input type="number" id="editAccountCreditLimit" min="0.01" step="0.01"></div>
+                            <div class="form-group"><label>Ekstre kesim günü</label><input type="number" id="editAccountStatementDay" min="1" max="31"></div>
+                            <div class="form-group"><label>Son ödeme günü</label><input type="number" id="editAccountDueDay" min="1" max="31"></div>
+                            <div class="form-group"><label>Asgari ödeme oranı (%)</label><input type="number" id="editAccountMinimumPaymentRate" min="0" max="100" step="0.1"></div>
+                        </div>
                         <div id="editInvestmentDetails" style="display:none;">
                             <div class="form-group"><label>Aldığınız Miktar / Adet</label><input type="number" id="editAccountQuantity" step="0.0001" min="0.0001"></div>
                             <div class="form-group"><label>Birim Alış Fiyatı (₺)</label><input type="number" id="editAccountBuyPrice" step="0.01" min="0.01"></div>
@@ -364,6 +461,16 @@
                     <div class="modal-header">
                         <h2>Hesap Bakiyeleri</h2>
                         <button id="closeAccountSummary" class="close-btn">&times;</button>
+                    </div>
+
+                    <div id="installmentSummaryModal" class="modal" style="display:none;">
+                        <div class="modal-content installment-summary-modal">
+                            <div class="modal-header">
+                                <h2>Bu Ay Gelecek Taksitler</h2>
+                                <button id="closeInstallmentSummary" class="close-btn">&times;</button>
+                            </div>
+                            <div id="installmentSummaryList" class="installment-summary-list"></div>
+                        </div>
                     </div>
                     <div id="accountSummaryList" class="account-summary-list"></div>
                 </div>
@@ -399,10 +506,42 @@
             <!-- Reports -->
             <div id="reports" class="page">
                 <div class="page-header"><h2>Raporlar</h2></div>
+                <div class="report-controls report-card">
+                    <div>
+                        <span class="section-eyebrow">GELİŞMİŞ RAPOR</span>
+                        <h3>Dönem analizi</h3>
+                        <p id="reportPeriodDescription" class="report-control-hint">Bu ayın finansal hareketleri</p>
+                    </div>
+                    <label class="report-period-field" for="reportPeriod">
+                        <span>Dönem</span>
+                        <select id="reportPeriod">
+                            <option value="day">Günlük</option>
+                            <option value="week">Haftalık</option>
+                            <option value="month" selected>Aylık</option>
+                            <option value="year">Yıllık</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="report-comparison-grid" aria-live="polite">
+                    <div class="report-comparison-card"><span id="reportCurrentLabel">Bu dönem</span><strong id="reportCurrentNet">₺0.00</strong><small>Net nakit akışı</small></div>
+                    <div class="report-comparison-card previous"><span id="reportPreviousLabel">Önceki dönem</span><strong id="reportPreviousNet">₺0.00</strong><small>Net nakit akışı</small></div>
+                    <div class="report-comparison-card change"><span>Değişim</span><strong id="reportNetChange">%0</strong><small>Önceki döneme göre</small></div>
+                </div>
                 <div class="advanced-report-grid">
                     <div class="advanced-stat-card"><span>Toplam Net Varlık</span><strong id="advancedNetWorth">₺0.00</strong></div>
-                    <div class="advanced-stat-card"><span>Bu Ay Nakit Akışı</span><strong id="advancedCashFlow">₺0.00</strong></div>
+                    <div class="advanced-stat-card"><span>Seçili Dönem Nakit Akışı</span><strong id="advancedCashFlow">₺0.00</strong></div>
                     <div class="advanced-stat-card"><span>Birikim Toplam Kâr/Zarar</span><strong id="advancedProfitLoss">₺0.00</strong></div>
+                </div>
+                <div class="report-card full-width net-worth-explanation">
+                    <div class="net-worth-heading">
+                        <div>
+                            <span class="section-eyebrow">FİNANSAL ÖZET</span>
+                            <h3>Net varlık</h3>
+                        </div>
+                        <span class="net-worth-formula">Varlıklar − borçlar</span>
+                    </div>
+                    <p>Sahip olduğunuz toplam değerlerden borçlarınız çıkarıldığında kalan tutar.</p>
+                    <div id="netWorthBreakdown" class="net-worth-breakdown" aria-live="polite"></div>
                 </div>
                 <div class="report-card full-width advanced-table-card">
                     <h3>Aylık Nakit Akışı</h3>
@@ -410,7 +549,17 @@
                 </div>
                 <div class="report-card full-width advanced-table-card">
                     <h3>Kategori Karşılaştırması</h3>
-                    <div class="table-scroll"><table class="advanced-report-table"><thead><tr><th>Kategori</th><th>Geçen Ay</th><th>Bu Ay</th><th>Değişim</th></tr></thead><tbody id="categoryComparisonBody"></tbody></table></div>
+                    <div class="table-scroll"><table class="advanced-report-table"><thead><tr><th>Kategori</th><th>Önceki dönem</th><th>Bu dönem</th><th>Değişim</th></tr></thead><tbody id="categoryComparisonBody"></tbody></table></div>
+                </div>
+                <div class="report-container report-detail-grid">
+                    <div class="report-card advanced-table-card">
+                        <h3>Kategori Dağılımı</h3>
+                        <div id="categoryDistribution" class="report-distribution-list"></div>
+                    </div>
+                    <div class="report-card advanced-table-card">
+                        <h3>Hesap Karşılaştırması</h3>
+                        <div class="table-scroll"><table class="advanced-report-table"><thead><tr><th>Hesap</th><th>Gelir</th><th>Gider</th><th>Net</th></tr></thead><tbody id="accountComparisonBody"></tbody></table></div>
+                    </div>
                 </div>
                 <div class="report-container">
                     <div class="report-card"><h3>Kategori Bazlı Harcama</h3><div class="chart-container"><canvas id="expenseChart"></canvas></div></div>

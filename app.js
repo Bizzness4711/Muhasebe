@@ -23,6 +23,7 @@ let selectedType = 'expense';
 let currentCurrency = 'TRY';
 let selectedAccounts = new Set();
 let currentMonth = new Date().toISOString().substring(0, 7);
+let reportPeriod = 'month';
 let currentThemeColor = 'green';
 let exchangeRates = { TRY: 1, USD: 0, EUR: 0, GRAM_ALTIN: 0, CEYREK_ALTIN: 0 };
 let recognition = null;
@@ -35,16 +36,37 @@ let securityTimeoutId = null;
 let securityLocked = false;
 let securityActivityBound = false;
 let rateRefreshIntervalId = null;
+let editingTransactionId = null;
+let recurringProcessingPromise = null;
 
 auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
+function getNextRecurringDate(dateString, frequency) {
+    const date = new Date(`${dateString}T12:00:00`);
+    if (frequency === 'weekly') date.setDate(date.getDate() + 7);
+    else if (frequency === 'yearly') date.setFullYear(date.getFullYear() + 1);
+    else date.setMonth(date.getMonth() + 1);
+    return date.toISOString().split('T')[0];
+}
 
 function showToast(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i><span>${message}</span>`;
+    const icon = document.createElement('i');
+    icon.className = `fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}`;
+    const text = document.createElement('span');
+    text.textContent = String(message);
+    toast.append(icon, text);
     document.body.appendChild(toast);
     setTimeout(() => toast.classList.add('show'), 100);
     setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
+}
+
+// Firestore'dan gelen kullanıcı metinlerini HTML içine yazmadan önce güvenli hale getir.
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[character]));
 }
 
 function notificationStorageKey() {
@@ -139,7 +161,7 @@ function addNotification(id, message, icon = 'fa-bell') {
     if (notifications.some(item => item.id === id)) return;
     notifications.unshift({ id, message, icon, read: false, createdAt: new Date().toISOString() });
     saveNotifications();
-    if ('Notification' in window && Notification.permission === 'granted') new Notification('Kişisel Muhasebe', { body: message });
+    if ('Notification' in window && Notification.permission === 'granted') new Notification('Finora', { body: message });
 }
 
 function updateNotificationsUI() {
@@ -150,7 +172,7 @@ function updateNotificationsUI() {
     count.textContent = unread.length > 99 ? '99+' : String(unread.length);
     count.hidden = unread.length === 0;
     list.innerHTML = notifications.length
-        ? notifications.slice(0, 12).map(item => `<div class="notification-item"><i class="fas ${item.icon}"></i><span>${item.message}</span></div>`).join('')
+        ? notifications.slice(0, 12).map(item => `<div class="notification-item"><i class="fas ${escapeHtml(item.icon)}"></i><span>${escapeHtml(item.message)}</span></div>`).join('')
         : '<div class="notification-empty">Yeni bildiriminiz yok.</div>';
 }
 
@@ -411,6 +433,8 @@ function updateTransactionPurchaseFields() {
     const input = document.getElementById('transactionPurchaseRate');
     const label = document.getElementById('transactionPurchaseLabel');
     const account = accounts.find(item => item.id === accountSelect?.value);
+    const installmentDetails = document.getElementById('creditInstallmentDetails');
+    if (installmentDetails) installmentDetails.hidden = account?.type !== 'credit';
     const visible = isInvestmentAccount(account);
     if (!details || !input || !label) return;
     details.hidden = !visible;
@@ -561,15 +585,17 @@ async function loadUserData() {
         else showToast('Veriler yüklenirken hata: ' + error.message, 'error');
     }
 
-    function getNextRecurringDate(dateString, frequency) {
-        const date = new Date(`${dateString}T12:00:00`);
-        if (frequency === 'weekly') date.setDate(date.getDate() + 7);
-        else if (frequency === 'yearly') date.setFullYear(date.getFullYear() + 1);
-        else date.setMonth(date.getMonth() + 1);
-        return date.toISOString().split('T')[0];
+    async function processRecurringTransactions() {
+        if (recurringProcessingPromise) return recurringProcessingPromise;
+        recurringProcessingPromise = processRecurringTransactionsInternal();
+        try {
+            await recurringProcessingPromise;
+        } finally {
+            recurringProcessingPromise = null;
+        }
     }
 
-    async function processRecurringTransactions() {
+    async function processRecurringTransactionsInternal() {
         let snapshot;
         try {
             snapshot = await db.collection('users').doc(currentUser.uid).collection('recurringTransactions').get();
@@ -593,19 +619,35 @@ async function loadUserData() {
                 const account = accounts.find(item => item.id === recurring.accountId);
                 if (!account) break;
                 const amount = Number(recurring.amount);
+                const isInstallment = Boolean(recurring.isInstallment);
+                const installmentTotal = Number(recurring.installmentTotal || amount);
                 const purchaseRate = Number(recurring.purchaseRate || 0);
                 const transactionRate = isInvestmentAccount(account) ? Number(exchangeRates[account.currency] || getAccountOpeningRate(account)) : 0;
                 const profitLoss = isInvestmentAccount(account) && transactionRate > 0 && purchaseRate > 0
                     ? (transactionRate - purchaseRate) * amount
                     : 0;
-                await db.collection('users').doc(currentUser.uid).collection('transactions').add({
+                const transactionRef = db.collection('users').doc(currentUser.uid).collection('transactions').doc(`${document.id}_${nextDate}`);
+                const existingTransaction = await transactionRef.get();
+                if (existingTransaction.exists) {
+                    nextDate = getNextRecurringDate(nextDate, recurring.frequency);
+                    createdCount++;
+                    continue;
+                }
+                await transactionRef.set({
                     type: recurring.type, amount, category: recurring.category, description: recurring.description,
                     date: nextDate, accountId: account.id, accountName: account.name, accountCurrency: account.currency,
                     accountOpeningRate: getAccountOpeningRate(account), purchaseRate, transactionRate,
                     transactionRateDate: new Date().toISOString(), profitLoss, recurringId: document.id,
+                    isInstallment,
+                    installmentCount: Number(recurring.installmentCount || 1),
+                    installmentInterestRate: Number(recurring.installmentInterestRate || 0),
+                    installmentInterestAmount: Number(recurring.installmentInterestAmount || 0),
+                    installmentTotal,
+                    installmentAmount: Number(recurring.installmentAmount || amount),
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                const newBalance = recurring.type === 'income' ? Number(account.balance) + amount : Number(account.balance) - amount;
+                const balanceAmount = isInstallment && recurring.type === 'expense' ? installmentTotal : amount;
+                const newBalance = recurring.type === 'income' ? Number(account.balance) + balanceAmount : Number(account.balance) - balanceAmount;
                 const updates = { balance: newBalance };
                 if (isInvestmentAccount(account)) {
                     updates.quantity = newBalance;
@@ -660,6 +702,7 @@ function updateAllUI() {
     updateCharts();
     updateProfitLossReport();
     updateAdvancedReports();
+    updateBalanceForecast();
     updateGoalAccountSelect();
     const monthDisplay = document.getElementById('currentMonthDisplay');
     if (monthDisplay) monthDisplay.textContent = formatMonth(currentMonth);
@@ -672,9 +715,182 @@ function getTransactionValueTL(transaction) {
     return Number(transaction.amount || 0) * rate;
 }
 
+function getAssistantAnswer(question) {
+    const normalized = question.toLocaleLowerCase('tr-TR');
+    const currentExpenses = transactions.filter(item => item.type === 'expense' && item.date?.startsWith(currentMonth));
+    const currentIncome = transactions.filter(item => item.type === 'income' && item.date?.startsWith(currentMonth));
+    const incomeTotal = currentIncome.reduce((sum, item) => sum + getTransactionValueTL(item), 0);
+    const expenseTotal = currentExpenses.reduce((sum, item) => sum + getTransactionValueTL(item), 0);
+    const previousMonthDate = new Date(`${currentMonth}-01T12:00:00`);
+    previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
+    const previousMonth = previousMonthDate.toISOString().substring(0, 7);
+    const previousExpenses = transactions.filter(item => item.type === 'expense' && item.date?.startsWith(previousMonth));
+    const previousExpenseTotal = previousExpenses.reduce((sum, item) => sum + getTransactionValueTL(item), 0);
+    const expenseChange = previousExpenseTotal > 0 ? ((expenseTotal - previousExpenseTotal) / previousExpenseTotal) * 100 : 0;
+    const categoryTotals = currentExpenses.reduce((result, item) => {
+        const category = (item.category || 'Diğer').replace(/^[^A-Za-zÇĞİÖŞÜçğıöşü0-9]+/u, '').trim() || 'Diğer';
+        result[category] = (result[category] || 0) + getTransactionValueTL(item);
+        return result;
+    }, {});
+    const topCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0];
+    const savings = incomeTotal - expenseTotal;
+
+    if (normalized.includes('neden') || normalized.includes('azaldı') || normalized.includes('azaldi')) {
+        if (!currentExpenses.length) return 'Bu ay henüz gider kaydı görünmüyor. Yeni işlemler eklendikçe harcama nedenlerini analiz edebilirim.';
+        const changeText = previousExpenseTotal > 0
+            ? `Geçen aya göre harcamaların %${Math.abs(expenseChange).toFixed(0)} ${expenseChange >= 0 ? 'arttı' : 'azaldı'}.`
+            : 'Geçen ay karşılaştırılabilir bir gider verisi yok.';
+        const categoryText = topCategory ? `En yüksek harcama ${topCategory[0]} kategorisinde: ₺${topCategory[1].toFixed(2)}.` : '';
+        return `${changeText} ${categoryText} Bu ay toplam ₺${expenseTotal.toFixed(2)} harcama yaptın.`;
+    }
+
+    if (normalized.includes('birikt') || normalized.includes('tasarruf') || normalized.includes('5000') || normalized.includes('5.000')) {
+        const requested = Number((question.match(/[\d.]+/) || ['5000'])[0].replace(/\./g, '')) || 5000;
+        return savings >= requested
+            ? `Evet. Mevcut verilere göre bu ay yaklaşık ₺${savings.toFixed(2)} ayırabilirsin; ₺${requested.toFixed(2)} hedefin ulaşılabilir görünüyor.`
+            : `Şu anki gelir-gider verilerine göre yaklaşık ₺${Math.max(0, savings).toFixed(2)} tasarruf alanı var. ₺${requested.toFixed(2)} hedefi için ₺${Math.max(0, requested - savings).toFixed(2)} daha alan açman gerekir.`;
+    }
+
+    return `Bu ay ₺${incomeTotal.toFixed(2)} gelir ve ₺${expenseTotal.toFixed(2)} gider kaydı var. Gelir-gider farkın ₺${savings.toFixed(2)}. “Bu ay param neden azaldı?” veya “₺5.000 biriktirebilir miyim?” diye sorabilirsin.`;
+}
+
+function askFinanceAssistant(question) {
+    const response = document.getElementById('assistantResponse');
+    if (!response) return;
+    const trimmedQuestion = String(question || '').trim();
+    if (!trimmedQuestion) return;
+    if (isHidden) {
+        response.innerHTML = '<i class="fas fa-lock"></i><span>Gizlilik modu açıkken finansal analiz gösterilemiyor.</span>';
+        return;
+    }
+    response.innerHTML = `<i class="fas fa-sparkles"></i><span>${escapeHtml(getAssistantAnswer(trimmedQuestion))}</span>`;
+}
+
+function updateBalanceForecast() {
+    const startingEl = document.getElementById('forecastStartingBalance');
+    const endingEl = document.getElementById('forecastEndingBalance');
+    const balanceEl = document.getElementById('forecastBalance');
+    const dateLabelEl = document.getElementById('forecastDateLabel');
+    const eventsEl = document.getElementById('forecastEvents');
+    if (!startingEl || !endingEl || !balanceEl || !dateLabelEl || !eventsEl) return;
+
+    const selectedIds = new Set(accounts.filter(account => selectedAccounts.has(account.id) && account.currency === 'TRY').map(account => account.id));
+    const startingBalance = accounts
+        .filter(account => selectedIds.has(account.id))
+        .reduce((sum, account) => sum + getAccountValueTL(account), 0);
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() + 30);
+    const todayKey = today.toISOString().split('T')[0];
+    const endDateKey = endDate.toISOString().split('T')[0];
+    const planned = [];
+
+    const addPlanned = (date, type, amount, title, detail) => {
+        if (!date || date <= todayKey || date > endDateKey || !(amount > 0)) return;
+        planned.push({ date, type, amount, title, detail });
+    };
+
+    transactions.forEach(transaction => {
+        if (selectedIds.has(transaction.accountId) && transaction.date > todayKey) {
+            const amount = Number(transaction.isInstallment ? transaction.installmentAmount || transaction.amount : transaction.amount) || 0;
+            addPlanned(transaction.date, transaction.type, amount, transaction.description || transaction.category || 'Planlanmış işlem', transaction.category || 'İleri tarihli işlem');
+        }
+        if (transaction.type === 'expense' && transaction.isInstallment && selectedIds.has(transaction.accountId)) {
+            const count = Math.max(2, Number(transaction.installmentCount || 1));
+            for (let index = 1; index < count; index++) {
+                const date = calendarDateAddMonths(transaction.date, index);
+                if (date > todayKey && date <= endDateKey) {
+                    addPlanned(date, 'expense', Number(transaction.installmentAmount || (transaction.installmentTotal || transaction.amount) / count), transaction.description || transaction.category || 'Kredi kartı taksiti', `Taksit ${index + 1}/${count}`);
+                }
+            }
+        }
+    });
+
+    recurringTransactions.filter(item => item.active !== false && selectedIds.has(item.accountId)).forEach(item => {
+        let date = item.nextDate;
+        let guard = 0;
+        while (date && date <= endDateKey && guard++ < 120) {
+            const amount = Number(item.isInstallment ? item.installmentAmount || item.amount : item.amount) || 0;
+            addPlanned(date, item.type, amount, item.description || item.category || 'Tekrarlayan işlem', 'Tekrarlayan işlem');
+            date = getNextRecurringDate(date, item.frequency);
+        }
+    });
+
+    planned.sort((a, b) => a.date.localeCompare(b.date));
+    const forecastBalance = startingBalance + planned.reduce((sum, event) => sum + (event.type === 'income' ? event.amount : -event.amount), 0);
+    const formatAmount = value => isHidden ? '₺••••••' : `₺${value.toFixed(2)}`;
+    const formatDate = value => new Date(`${value}T12:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+    startingEl.textContent = formatAmount(startingBalance);
+    endingEl.textContent = formatAmount(forecastBalance);
+    balanceEl.textContent = formatAmount(forecastBalance);
+    dateLabelEl.textContent = `${formatDate(endDateKey)} sonrası`;
+    eventsEl.innerHTML = planned.length && !isHidden
+        ? planned.map(event => `<div class="forecast-event ${event.type === 'income' ? 'income' : 'expense'}">
+            <span class="forecast-event-date">${formatDate(event.date)}</span>
+            <span class="forecast-event-icon"><i class="fas ${event.type === 'income' ? 'fa-arrow-down' : 'fa-arrow-up'}"></i></span>
+            <span class="forecast-event-info"><strong>${escapeHtml(event.title)}</strong><small>${escapeHtml(event.detail)}</small></span>
+            <b>${event.type === 'income' ? '+' : '-'}₺${event.amount.toFixed(2)}</b>
+        </div>`).join('')
+        : `<p class="empty-state">${isHidden ? 'Tahmin ayrıntıları gizli.' : 'Önümüzdeki 30 gün için planlanmış hareket yok.'}</p>`;
+}
+
 function signedReportValue(value) {
     const className = value >= 0 ? 'report-positive' : 'report-negative';
     return `<span class="${className}">${value >= 0 ? '+' : '-'}₺${Math.abs(value).toFixed(2)}</span>`;
+}
+
+function reportDateKey(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getReportRanges() {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    let start;
+    let end;
+    if (reportPeriod === 'month') {
+        const [year, month] = currentMonth.split('-').map(Number);
+        start = new Date(year, month - 1, 1, 12);
+        end = new Date(year, month, 0, 12);
+    } else if (reportPeriod === 'year') {
+        start = new Date(today.getFullYear(), 0, 1, 12);
+        end = new Date(today.getFullYear(), 11, 31, 12);
+    } else if (reportPeriod === 'week') {
+        start = new Date(today);
+        const mondayOffset = (start.getDay() + 6) % 7;
+        start.setDate(start.getDate() - mondayOffset);
+        end = new Date(start);
+        end.setDate(end.getDate() + 6);
+    } else {
+        start = new Date(today);
+        end = new Date(today);
+    }
+    const length = Math.round((end - start) / 86400000) + 1;
+    const previousEnd = new Date(start);
+    previousEnd.setDate(previousEnd.getDate() - 1);
+    const previousStart = new Date(previousEnd);
+    previousStart.setDate(previousStart.getDate() - length + 1);
+    return {
+        current: { start: reportDateKey(start), end: reportDateKey(end) },
+        previous: { start: reportDateKey(previousStart), end: reportDateKey(previousEnd) }
+    };
+}
+
+function reportTransactions(range, type) {
+    return transactions.filter(transaction => {
+        if (type && transaction.type !== type) return false;
+        return transaction.date >= range.start && transaction.date <= range.end;
+    });
+}
+
+function reportPeriodText(range) {
+    const format = value => new Date(`${value}T12:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+    return reportPeriod === 'day' ? format(range.start)
+        : `${format(range.start)} – ${format(range.end)}`;
 }
 
 function updateAdvancedReports() {
@@ -683,16 +899,45 @@ function updateAdvancedReports() {
     const profitLossEl = document.getElementById('advancedProfitLoss');
     const cashBody = document.getElementById('cashFlowReportBody');
     const categoryBody = document.getElementById('categoryComparisonBody');
+    const distributionEl = document.getElementById('categoryDistribution');
+    const accountBody = document.getElementById('accountComparisonBody');
     if (!netWorthEl || !cashFlowEl || !profitLossEl || !cashBody || !categoryBody) return;
 
-    const netWorth = accounts.reduce((sum, account) => sum + getAccountValueTL(account), 0);
+    const netWorthSummary = getNetWorthSummary();
+    const netWorth = netWorthSummary.assets - netWorthSummary.liabilities;
     const totalProfitLoss = accounts.filter(isInvestmentAccount).reduce((sum, account) => sum + getInvestmentMetrics(account).profitLoss, 0)
         + transactions.filter(transaction => transaction.type === 'expense').reduce((sum, transaction) => sum + Number(transaction.profitLoss || 0), 0);
-    const currentTransactions = transactions.filter(transaction => transaction.date?.startsWith(currentMonth));
+    const ranges = getReportRanges();
+    const currentTransactions = reportTransactions(ranges.current);
+    const previousTransactions = reportTransactions(ranges.previous);
     const currentCashFlow = currentTransactions.reduce((sum, transaction) => sum + (transaction.type === 'income' ? 1 : -1) * getTransactionValueTL(transaction), 0);
+    const previousCashFlow = previousTransactions.reduce((sum, transaction) => sum + (transaction.type === 'income' ? 1 : -1) * getTransactionValueTL(transaction), 0);
     netWorthEl.textContent = isHidden ? '₺••••••' : `₺${netWorth.toFixed(2)}`;
     cashFlowEl.innerHTML = isHidden ? '₺••••••' : signedReportValue(currentCashFlow);
     profitLossEl.innerHTML = isHidden ? '₺••••••' : signedReportValue(totalProfitLoss);
+    const breakdownEl = document.getElementById('netWorthBreakdown');
+    if (breakdownEl) {
+        breakdownEl.innerHTML = isHidden
+            ? '<span class="net-worth-hidden">Varlık ve borç ayrıntıları gizli.</span>'
+            : `<div class="net-worth-metric"><span>Toplam varlık</span><strong>₺${netWorthSummary.assets.toFixed(2)}</strong></div>
+               <div class="net-worth-metric liability"><span>Toplam borç</span><strong>₺${netWorthSummary.liabilities.toFixed(2)}</strong></div>
+               <div class="net-worth-metric total"><span>Net varlık</span><strong>₺${netWorth.toFixed(2)}</strong></div>`;
+    }
+    const currentLabel = document.getElementById('reportCurrentLabel');
+    const previousLabel = document.getElementById('reportPreviousLabel');
+    const periodDescription = document.getElementById('reportPeriodDescription');
+    const currentNetEl = document.getElementById('reportCurrentNet');
+    const previousNetEl = document.getElementById('reportPreviousNet');
+    const netChangeEl = document.getElementById('reportNetChange');
+    if (currentLabel) currentLabel.textContent = `Bu dönem · ${reportPeriodText(ranges.current)}`;
+    if (previousLabel) previousLabel.textContent = `Önceki dönem · ${reportPeriodText(ranges.previous)}`;
+    if (periodDescription) periodDescription.textContent = `${reportPeriodText(ranges.current)} hareketleri`;
+    if (currentNetEl) currentNetEl.innerHTML = isHidden ? '₺••••••' : signedReportValue(currentCashFlow);
+    if (previousNetEl) previousNetEl.innerHTML = isHidden ? '₺••••••' : signedReportValue(previousCashFlow);
+    if (netChangeEl) {
+        const change = previousCashFlow !== 0 ? ((currentCashFlow - previousCashFlow) / Math.abs(previousCashFlow)) * 100 : (currentCashFlow ? 100 : 0);
+        netChangeEl.innerHTML = isHidden ? '••••' : `<span class="${change >= 0 ? 'report-positive' : 'report-negative'}">${change >= 0 ? '+' : ''}${change.toFixed(1)}%</span>`;
+    }
 
     const monthly = {};
     transactions.forEach(transaction => {
@@ -707,22 +952,47 @@ function updateAdvancedReports() {
         return `<tr><td>${formatMonth(month)}</td><td>₺${data.income.toFixed(2)}</td><td>₺${data.expense.toFixed(2)}</td><td>${signedReportValue(data.income - data.expense)}</td></tr>`;
     }).join('') : '<tr><td colspan="4" class="empty-state">Henüz nakit akışı verisi yok.</td></tr>';
 
-    let year = Number(currentMonth.substring(0, 4));
-    let month = Number(currentMonth.substring(5, 7)) - 1;
-    const previousDate = new Date(year, month - 1, 1);
-    const previousMonth = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, '0')}`;
     const categories = {};
-    transactions.filter(transaction => transaction.type === 'expense').forEach(transaction => {
-        const transactionMonth = transaction.date?.substring(0, 7);
-        if (transactionMonth !== currentMonth && transactionMonth !== previousMonth) return;
-        if (!categories[transaction.category]) categories[transaction.category] = { current: 0, previous: 0 };
-        categories[transaction.category][transactionMonth === currentMonth ? 'current' : 'previous'] += getTransactionValueTL(transaction);
+    const categoryTotals = {};
+    reportTransactions(ranges.current, 'expense').forEach(transaction => {
+        const category = String(transaction.category || 'Diğer').replace(/^[^A-Za-zÇĞİÖŞÜçğıöşü0-9]+/u, '').trim() || 'Diğer';
+        if (!categories[category]) categories[category] = { current: 0, previous: 0 };
+        categories[category].current += getTransactionValueTL(transaction);
+        categoryTotals[category] = (categoryTotals[category] || 0) + getTransactionValueTL(transaction);
+    });
+    reportTransactions(ranges.previous, 'expense').forEach(transaction => {
+        const category = String(transaction.category || 'Diğer').replace(/^[^A-Za-zÇĞİÖŞÜçğıöşü0-9]+/u, '').trim() || 'Diğer';
+        if (!categories[category]) categories[category] = { current: 0, previous: 0 };
+        categories[category].previous += getTransactionValueTL(transaction);
     });
     const categoryRows = Object.entries(categories).sort((a, b) => b[1].current - a[1].current);
     categoryBody.innerHTML = categoryRows.length ? categoryRows.map(([category, values]) => {
         const change = values.current - values.previous;
-        return `<tr><td>${category}</td><td>₺${values.previous.toFixed(2)}</td><td>₺${values.current.toFixed(2)}</td><td>${signedReportValue(change)}</td></tr>`;
+        const hiddenValue = '<span class="report-hidden-value">₺••••••</span>';
+        return `<tr><td>${escapeHtml(category)}</td><td>${isHidden ? hiddenValue : `₺${values.previous.toFixed(2)}`}</td><td>${isHidden ? hiddenValue : `₺${values.current.toFixed(2)}`}</td><td>${isHidden ? '••••' : signedReportValue(change)}</td></tr>`;
     }).join('') : '<tr><td colspan="4" class="empty-state">Karşılaştırılacak masraf verisi yok.</td></tr>';
+
+    if (distributionEl) {
+        const totalExpenses = Object.values(categoryTotals).reduce((sum, value) => sum + value, 0);
+        const distributionRows = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+        distributionEl.innerHTML = !distributionRows.length || isHidden
+            ? `<p class="empty-state">${isHidden ? 'Dağılım ayrıntıları gizli.' : 'Bu dönemde masraf verisi yok.'}</p>`
+            : distributionRows.map(([category, value]) => {
+                const percentage = totalExpenses ? (value / totalExpenses) * 100 : 0;
+                return `<div class="distribution-row"><div><span>${escapeHtml(category)}</span><strong>₺${value.toFixed(2)}</strong></div><div class="distribution-track"><i style="width:${percentage.toFixed(1)}%"></i></div><small>%${percentage.toFixed(1)}</small></div>`;
+            }).join('');
+    }
+    if (accountBody) {
+        const rows = accounts.map(account => {
+            const items = currentTransactions.filter(transaction => transaction.accountId === account.id);
+            const income = items.filter(item => item.type === 'income').reduce((sum, item) => sum + getTransactionValueTL(item), 0);
+            const expense = items.filter(item => item.type === 'expense').reduce((sum, item) => sum + getTransactionValueTL(item), 0);
+            return { name: account.name || 'Adsız hesap', income, expense, net: income - expense };
+        }).filter(row => row.income || row.expense).sort((a, b) => b.expense - a.expense);
+        accountBody.innerHTML = rows.length && !isHidden
+            ? rows.map(row => `<tr><td>${escapeHtml(row.name)}</td><td>₺${row.income.toFixed(2)}</td><td>₺${row.expense.toFixed(2)}</td><td>${signedReportValue(row.net)}</td></tr>`).join('')
+            : `<tr><td colspan="4" class="empty-state">${isHidden ? 'Hesap ayrıntıları gizli.' : 'Bu dönemde hesap hareketi yok.'}</td></tr>`;
+    }
 }
 
 function updateGoalAccountSelect() {
@@ -731,7 +1001,7 @@ function updateGoalAccountSelect() {
     const currentValue = select.value;
     const tryAccounts = accounts.filter(account => account.currency === 'TRY');
     select.innerHTML = '<option value="">Hesap bağlama</option>' +
-        tryAccounts.map(account => `<option value="${account.id}">${account.name} (${account.balance.toFixed(2)} ₺)</option>`).join('');
+        tryAccounts.map(account => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)} (${(Number(account.balance) || 0).toFixed(2)} ₺)</option>`).join('');
     if (tryAccounts.some(account => account.id === currentValue)) select.value = currentValue;
 }
 
@@ -740,8 +1010,8 @@ function updateRecurringTransactionsUI() {
     if (!list) return;
     const active = recurringTransactions.filter(item => item.active !== false);
     list.innerHTML = active.length ? active.map(item => `<div class="recurring-item">
-        <span><strong>${item.type === 'income' ? 'Gelir' : 'Masraf'}</strong> · ${item.description} · ${Number(item.amount || 0).toFixed(2)} ${item.accountCurrency}</span>
-        <small>Sonraki: ${item.nextDate}</small>
+        <span><strong>${item.type === 'income' ? 'Gelir' : 'Masraf'}</strong> · ${escapeHtml(item.description)} · ${Number(item.amount || 0).toFixed(2)} ${escapeHtml(item.accountCurrency)}</span>
+        <small>Sonraki: ${escapeHtml(item.nextDate)}</small>
         <button class="delete-btn" onclick="cancelRecurringTransaction('${item.id}')"><i class="fas fa-stop"></i></button>
     </div>`).join('') : '<p class="empty-state">Aktif tekrarlayan işlem yok.</p>';
 }
@@ -795,7 +1065,184 @@ function getInvestmentMetrics(account) {
 }
 
 function getAccountValueTL(account) {
-    return isInvestmentAccount(account) ? getInvestmentMetrics(account).currentValue : Number(account.balance || 0);
+    if (isInvestmentAccount(account)) return getInvestmentMetrics(account).currentValue;
+    const balance = Number(account.balance || 0);
+    if (account.currency === 'TRY') return balance;
+
+    // Net varlık ve hesap dağılımı tüm hesapları TL karşılığıyla toplar.
+    const rate = Number(exchangeRates[account.currency] || 0);
+    return rate > 0 ? balance * rate : balance;
+}
+
+function getCreditCardMetrics(account) {
+    const limit = Math.max(0, Number(account.creditLimit || 0));
+    const debt = Math.max(0, Math.abs(Number(account.balance || 0)));
+    return { limit, debt, available: Math.max(0, limit - debt), minimum: debt * (Number(account.minimumPaymentRate || 20) / 100) };
+}
+
+const liabilityAccountTypes = ['credit', 'debt'];
+
+function getInstallmentMonthDifference(startDate, targetMonth) {
+    const start = new Date(`${startDate}T12:00:00`);
+    const target = new Date(`${targetMonth}-01T12:00:00`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(target.getTime())) return null;
+    return (target.getFullYear() - start.getFullYear()) * 12 + target.getMonth() - start.getMonth();
+}
+
+function getCurrentCreditCardInstallments() {
+    return transactions.reduce((items, transaction) => {
+        if (transaction.type !== 'expense' || !transaction.isInstallment) return items;
+        const account = accounts.find(item => item.id === transaction.accountId);
+        if (!account || account.type !== 'credit') return items;
+        const count = Math.max(2, Number(transaction.installmentCount || 1));
+        const monthDifference = getInstallmentMonthDifference(transaction.date, currentMonth);
+        if (monthDifference === null || monthDifference < 0 || monthDifference >= count) return items;
+        items.push({
+            account,
+            transaction,
+            number: monthDifference + 1,
+            count,
+            amount: Number(transaction.installmentAmount || (transaction.installmentTotal || transaction.amount) / count)
+        });
+        return items;
+    }, []);
+}
+
+function calendarDateAddMonths(dateString, months) {
+    const source = new Date(`${dateString}T12:00:00`);
+    if (Number.isNaN(source.getTime())) return '';
+    const day = source.getDate();
+    const result = new Date(source.getFullYear(), source.getMonth() + months, 1, 12);
+    const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+    result.setDate(Math.min(day, lastDay));
+    return result.toISOString().split('T')[0];
+}
+
+function getCalendarEvents() {
+    const [year, month] = currentMonth.split('-').map(Number);
+    const monthStart = `${currentMonth}-01`;
+    const monthEnd = new Date(year, month, 0, 12).toISOString().split('T')[0];
+    const events = [];
+
+    transactions.forEach(transaction => {
+        if (transaction.date >= monthStart && transaction.date <= monthEnd) {
+            events.push({ date: transaction.date, kind: 'current', type: transaction.type, amount: Number(transaction.amount) || 0,
+                title: transaction.description || transaction.category || 'İşlem', detail: transaction.category || 'İşlem' });
+        }
+    });
+    transfers.forEach(transfer => {
+        if (transfer.date >= monthStart && transfer.date <= monthEnd) {
+            events.push({ date: transfer.date, kind: 'current', type: 'transfer', amount: Number(transfer.amount) || 0,
+                title: transfer.description || 'Hesaplar arası transfer', detail: 'Transfer' });
+        }
+    });
+    recurringTransactions.filter(item => item.active !== false).forEach(item => {
+        let date = item.nextDate;
+        let guard = 0;
+        while (date && date <= monthEnd && guard++ < 120) {
+            if (date >= monthStart && (!item.endDate || date <= item.endDate)) {
+                events.push({ date, kind: 'recurring', type: item.type, amount: Number(item.amount) || 0,
+                    title: item.description || item.category || 'Tekrarlayan işlem', detail: 'Tekrarlayan ödeme' });
+            }
+            date = getNextRecurringDate(date, item.frequency);
+        }
+    });
+    transactions.filter(item => item.type === 'expense' && item.isInstallment).forEach(transaction => {
+        const count = Math.max(2, Number(transaction.installmentCount || 1));
+        const start = new Date(`${transaction.date}T12:00:00`);
+        for (let index = 0; index < count; index++) {
+            const date = calendarDateAddMonths(transaction.date, index);
+            if (date >= monthStart && date <= monthEnd) {
+                events.push({ date, kind: 'installment', type: 'expense',
+                    amount: Number(transaction.installmentAmount || (transaction.installmentTotal || transaction.amount) / count) || 0,
+                    title: transaction.description || transaction.category || 'Kredi kartı taksiti',
+                    detail: `Taksit ${index + 1}/${count}` });
+            }
+        }
+    });
+    return events;
+}
+
+function updateFinanceCalendar(selectedDate) {
+    const calendar = document.getElementById('financeCalendar');
+    const detail = document.getElementById('calendarDayItems');
+    const selectedTitle = document.getElementById('calendarSelectedDate');
+    if (!calendar || !detail || !selectedTitle) return;
+    const [year, month] = currentMonth.split('-').map(Number);
+    const firstDay = new Date(year, month - 1, 1).getDay();
+    const offset = (firstDay + 6) % 7;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const events = getCalendarEvents();
+    const grouped = events.reduce((result, event) => {
+        (result[event.date] ||= []).push(event);
+        return result;
+    }, {});
+    const weekdays = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+    let html = weekdays.map(day => `<div class="calendar-weekday" role="columnheader">${day}</div>`).join('');
+    for (let index = 0; index < offset; index++) html += '<div class="calendar-cell is-empty" aria-hidden="true"></div>';
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = `${currentMonth}-${String(day).padStart(2, '0')}`;
+        const dayEvents = grouped[date] || [];
+        const classes = [...new Set(dayEvents.map(event => event.kind))].join(' ');
+        html += `<button type="button" class="calendar-cell ${classes} ${date === selectedDate ? 'selected' : ''}" data-calendar-date="${date}" role="gridcell" aria-label="${escapeHtml(date)} günü, ${dayEvents.length} kayıt">
+            <strong>${day}</strong><span class="calendar-event-count">${dayEvents.length ? `${dayEvents.length} kayıt` : ''}</span>
+            <span class="calendar-event-dots">${dayEvents.slice(0, 4).map(event => `<i class="calendar-dot ${event.kind}" title="${escapeHtml(event.detail)}"></i>`).join('')}</span>
+        </button>`;
+    }
+    calendar.innerHTML = html;
+    const today = new Date().toISOString().split('T')[0];
+    if (!selectedDate || !selectedDate.startsWith(currentMonth)) selectedDate = today.startsWith(currentMonth) ? today : `${currentMonth}-01`;
+    calendar.querySelectorAll('[data-calendar-date]').forEach(button => {
+        button.classList.toggle('selected', button.dataset.calendarDate === selectedDate);
+        button.addEventListener('click', () => updateFinanceCalendar(button.dataset.calendarDate));
+    });
+    selectedTitle.textContent = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+    const selectedEvents = grouped[selectedDate] || [];
+    detail.innerHTML = selectedEvents.length ? selectedEvents.map(event => {
+        const sign = event.type === 'income' ? '+' : event.type === 'expense' ? '-' : '↔';
+        const amount = isHidden ? '₺••••••' : `${sign}₺${event.amount.toFixed(2)}`;
+        return `<div class="calendar-detail-item ${escapeHtml(event.kind)}"><i class="calendar-dot ${escapeHtml(event.kind)}"></i><span><strong>${escapeHtml(event.title)}</strong><small>${escapeHtml(event.detail)}</small></span><b>${amount}</b></div>`;
+    }).join('') : '<p class="empty-state">Bu güne ait kayıt bulunmuyor.</p>';
+}
+
+function showInstallmentSummary() {
+    const modal = document.getElementById('installmentSummaryModal');
+    const list = document.getElementById('installmentSummaryList');
+    if (!modal || !list) return;
+    if (isHidden) {
+        showToast('Taksit ayrıntılarını görmek için önce gizlilik modunu kapatın.', 'error');
+        return;
+    }
+    const installments = getCurrentCreditCardInstallments();
+    const grouped = installments.reduce((groups, item) => {
+        if (!groups[item.account.id]) groups[item.account.id] = { account: item.account, items: [] };
+        groups[item.account.id].items.push(item);
+        return groups;
+    }, {});
+    list.innerHTML = Object.values(grouped).length
+        ? Object.values(grouped).map(group => {
+            const total = group.items.reduce((sum, item) => sum + item.amount, 0);
+            return `<section class="installment-summary-account">
+                <div class="installment-summary-account-header"><strong>💳 ${escapeHtml(group.account.name)}</strong><strong>₺${total.toFixed(2)}</strong></div>
+                ${group.items.map(item => `<div class="installment-summary-item"><span>${escapeHtml(item.transaction.description || item.transaction.category)} · ${item.number}/${item.count}</span><strong>₺${item.amount.toFixed(2)}</strong></div>`).join('')}
+            </section>`;
+        }).join('')
+        : '<p class="empty-state">Bu ay kredi kartlarına ait gelecek taksit bulunmuyor.</p>';
+    modal.style.display = 'flex';
+}
+
+function getNetWorthSummary() {
+    return accounts.reduce((summary, account) => {
+        const value = getAccountValueTL(account);
+        if (liabilityAccountTypes.includes(account.type)) {
+            // Eski kredi kartı kayıtları borcu negatif saklar; pozitif girilmiş
+            // yeni kayıtları da net varlıktan borç olarak düşür.
+            summary.liabilities += Math.abs(value);
+        } else {
+            summary.assets += value;
+        }
+        return summary;
+    }, { assets: 0, liabilities: 0 });
 }
 
 function updateEditAccountFields() {
@@ -805,9 +1252,15 @@ function updateEditAccountFields() {
     const balanceGroup = document.getElementById('editAccountBalanceGroup');
     const quantityInput = document.getElementById('editAccountQuantity');
     const buyPriceInput = document.getElementById('editAccountBuyPrice');
+    const creditDetails = document.getElementById('editCreditCardDetails');
+    const isCredit = document.getElementById('editAccountType').value === 'credit';
 
     document.getElementById('editInvestmentDetails').style.display = isInvestment ? 'block' : 'none';
     balanceGroup.style.display = isInvestment ? 'none' : 'block';
+    if (creditDetails) {
+        creditDetails.hidden = !isCredit;
+        creditDetails.querySelectorAll('input').forEach(input => { input.required = isCredit; });
+    }
     quantityInput.required = isInvestment;
     buyPriceInput.required = isInvestment;
     typeSelect.disabled = isInvestment;
@@ -819,9 +1272,10 @@ function updateDashboard() {
     const selectedAccountsList = accounts.filter(a => selectedAccounts.has(a.id) && a.currency === 'TRY');
     const totalBalance = selectedAccountsList.reduce((sum, a) => sum + getAccountValueTL(a), 0);
 
-    const totalIncome = transactions.filter(t => t.type === 'income' && t.date.startsWith(currentMonth)).reduce((sum, t) => sum + t.amount, 0);
-    const totalExpense = transactions.filter(t => t.type === 'expense' && t.date.startsWith(currentMonth)).reduce((sum, t) => sum + t.amount, 0);
+    const totalIncome = transactions.filter(t => t.type === 'income' && String(t.date || '').startsWith(currentMonth)).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const totalExpense = transactions.filter(t => t.type === 'expense' && String(t.date || '').startsWith(currentMonth)).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome * 100) : 0;
+    const upcomingInstallments = getCurrentCreditCardInstallments().reduce((sum, item) => sum + item.amount, 0);
 
     const investmentAccounts = accounts.filter(isInvestmentAccount);
     const investmentTotals = investmentAccounts.reduce((totals, account) => {
@@ -842,6 +1296,7 @@ function updateDashboard() {
     const savingsRateEl = document.getElementById('savingsRate');
     const investmentSummaryEl = document.getElementById('investmentSummary');
     const investmentProfitLossEl = document.getElementById('investmentProfitLoss');
+    const upcomingInstallmentsEl = document.getElementById('upcomingInstallments');
     const monthDisplay = document.getElementById('currentMonthDisplay');
 
     if (isHidden) {
@@ -851,6 +1306,7 @@ function updateDashboard() {
         if (savingsRateEl) savingsRateEl.textContent = '%••••';
         if (investmentSummaryEl) investmentSummaryEl.textContent = '₺••••••';
         if (investmentProfitLossEl) investmentProfitLossEl.textContent = 'Kâr/Zarar: ₺••••••';
+        if (upcomingInstallmentsEl) upcomingInstallmentsEl.textContent = '₺••••••';
     } else {
         if (totalBalanceEl) totalBalanceEl.textContent = `₺${totalBalance.toFixed(2)}`;
         if (totalIncomeEl) totalIncomeEl.textContent = `₺${totalIncome.toFixed(2)}`;
@@ -863,9 +1319,11 @@ function updateDashboard() {
             investmentProfitLossEl.classList.toggle('profit', investmentTotals.profitLoss >= 0);
             investmentProfitLossEl.classList.toggle('loss', investmentTotals.profitLoss < 0);
         }
+        if (upcomingInstallmentsEl) upcomingInstallmentsEl.textContent = `₺${upcomingInstallments.toFixed(2)}`;
     }
 
     if (monthDisplay) monthDisplay.textContent = formatMonth(currentMonth);
+    updateFinanceCalendar();
 
     const eyeBtn = document.getElementById('toggleBalanceBtn');
     if (eyeBtn) {
@@ -883,7 +1341,7 @@ function showAccountSummary() {
     if (!modal || !list) return;
     const selectedAccountsList = accounts.filter(a => selectedAccounts.has(a.id) && a.currency === 'TRY');
     if (selectedAccountsList.length === 0) list.innerHTML = '<p class="empty-state">Gösterilecek hesap seçilmedi.</p>';
-    else list.innerHTML = selectedAccountsList.map(account => `<div class="account-summary-item"><span>${account.name}</span><strong>₺${getAccountValueTL(account).toFixed(2)}</strong></div>`).join('');
+    else list.innerHTML = selectedAccountsList.map(account => `<div class="account-summary-item"><span>${escapeHtml(account.name)}</span><strong>₺${getAccountValueTL(account).toFixed(2)}</strong></div>`).join('');
     modal.style.display = 'flex';
 }
 
@@ -896,7 +1354,7 @@ function updateAccountsUI() {
     const accountSelector = document.getElementById('accountSelector');
     
     const currencySymbols = { TRY: '₺', USD: '$', EUR: '€', GRAM_ALTIN: '🪙', CEYREK_ALTIN: '🪙' };
-    const typeIcons = { bank: '🏦', cash: '💵', credit: '💳', investment: '📈' };
+    const typeIcons = { bank: '🏦', cash: '💵', credit: '💳', ewallet: '📱', investment: '📈', crypto: '₿', debt: '🤝' };
 
     if (accountsList) {
         if (accounts.length === 0) accountsList.innerHTML = '<p class="empty-state">Henüz hesap eklenmemiş</p>';
@@ -904,15 +1362,22 @@ function updateAccountsUI() {
             accountsList.innerHTML = accounts.map(account => {
                 const investment = isInvestmentAccount(account);
                 const metrics = investment ? getInvestmentMetrics(account) : null;
-                const isNegative = investment ? metrics.profitLoss < 0 : account.balance < 0;
+                const credit = account.type === 'credit' ? getCreditCardMetrics(account) : null;
+                const balance = Number(account.balance) || 0;
+                const isNegative = investment ? metrics.profitLoss < 0 : account.type === 'credit' ? credit.debt > 0 : balance < 0;
                 const balanceDisplay = isHidden ? '₺••••••' : investment
                     ? `₺${metrics.currentValue.toFixed(2)}`
-                    : `${currencySymbols[account.currency]} ${account.balance.toFixed(2)}`;
+                    : credit ? `₺${credit.debt.toFixed(2)}`
+                    : `${currencySymbols[account.currency] || '₺'} ${balance.toFixed(2)}`;
                 const investmentDetail = investment && !isHidden
                     ? `<p class="investment-account-detail">${metrics.quantity} adet · Maliyet: ₺${metrics.cost.toFixed(2)} · ${metrics.profitLoss >= 0 ? 'Kâr' : 'Zarar'}: ${metrics.profitLoss >= 0 ? '+' : '-'}₺${Math.abs(metrics.profitLoss).toFixed(2)}</p>`
                     : '';
+                const creditDetail = credit && !isHidden
+                    ? `<div class="credit-account-metrics"><span><b>₺${credit.debt.toFixed(2)}</b><small>Kullanılan limit / borç</small></span><span><b>₺${credit.available.toFixed(2)}</b><small>Kullanılabilir limit</small></span><span><b>₺${credit.minimum.toFixed(2)}</b><small>Asgari ödeme</small></span></div>
+                       <div class="credit-progress"><i style="width:${credit.limit ? Math.min(100, credit.debt / credit.limit * 100) : 0}%"></i></div>`
+                    : '';
                 const accountColor = /^#[0-9a-f]{6}$/i.test(account.color || '') ? account.color : '#4CAF50';
-                const accountLabel = account.label ? `<span class="account-label" style="--account-color:${accountColor}">${account.label}</span>` : '';
+                const accountLabel = account.label ? `<span class="account-label" style="--account-color:${accountColor}">${escapeHtml(account.label)}</span>` : '';
                 return `<div class="account-card" style="--account-color:${accountColor}; border-top: 4px solid var(--account-color);">
                     <div class="account-card-header">
                         <div class="account-card-type ${account.type}">${typeIcons[account.type] || '💰'}</div>
@@ -921,15 +1386,16 @@ function updateAccountsUI() {
                             <button class="delete-account-btn" onclick="deleteAccount('${account.id}')" title="Hesabı Sil"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
-                    <h3 class="account-card-title"><span>${account.name}</span>${accountLabel}</h3>
+                    <h3 class="account-card-title"><span>${escapeHtml(account.name)}</span>${accountLabel}</h3>
                     <p class="account-card-balance ${isNegative ? 'negative-balance' : ''}">${balanceDisplay}</p>
                     ${investmentDetail}
+                    ${creditDetail}
                 </div>`;
             }).join('');
         }
     }
 
-    const accountOptions = accounts.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('');
+    const accountOptions = accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)} (${escapeHtml(a.currency)})</option>`).join('');
     if (accountSelect) {
         accountSelect.innerHTML = '<option value="">Hesap Seçin</option>' + accountOptions;
         accountSelect.onchange = () => {
@@ -954,9 +1420,9 @@ function updateAccountsUI() {
             accountSelector.innerHTML = tryAccounts.map(account => {
                 const isChecked = selectedAccounts.has(account.id);
                 return `<label class="account-checkbox ${isChecked ? 'checked' : ''}">
-                    <input type="checkbox" value="${account.id}" ${isChecked ? 'checked' : ''} onchange="window.toggleAccountSelection('${account.id}', this.checked)">
+                    <input type="checkbox" value="${escapeHtml(account.id)}" ${isChecked ? 'checked' : ''} onchange="window.toggleAccountSelection('${escapeHtml(account.id)}', this.checked)">
                     <span class="checkmark"><i class="fas fa-check"></i></span>
-                    <span>${account.name}</span>
+                    <span>${escapeHtml(account.name)}</span>
                 </label>`;
             }).join('');
         }
@@ -980,6 +1446,10 @@ window.editAccount = function(id) {
     document.getElementById('editAccountBuyPrice').value = investment ? account.buyPrice || '' : '';
     document.getElementById('editAccountLabel').value = account.label || '';
     document.getElementById('editAccountColor').value = /^#[0-9a-f]{6}$/i.test(account.color || '') ? account.color : '#4CAF50';
+    document.getElementById('editAccountCreditLimit').value = account.creditLimit || '';
+    document.getElementById('editAccountStatementDay').value = account.statementDay || '';
+    document.getElementById('editAccountDueDay').value = account.dueDay || '';
+    document.getElementById('editAccountMinimumPaymentRate').value = account.minimumPaymentRate || 20;
     updateEditAccountFields();
     document.getElementById('editAccountModal').style.display = 'flex';
 };
@@ -998,7 +1468,11 @@ function updateTransactionsUI() {
     if (!recentList && !allList) return;
 
     const allItems = [];
+    const recurringDateKeys = new Set();
     transactions.forEach(t => {
+        const recurringDateKey = t.recurringId ? `${t.recurringId}|${t.date || ''}` : '';
+        if (recurringDateKey && recurringDateKeys.has(recurringDateKey)) return;
+        if (recurringDateKey) recurringDateKeys.add(recurringDateKey);
         allItems.push({
             id: t.id,
             isTransfer: false,
@@ -1015,6 +1489,11 @@ function updateTransactionsUI() {
             purchaseRate: Number(t.purchaseRate || t.accountOpeningRate || 0),
             transactionRate: Number(t.transactionRate || 0),
             profitLoss: Number(t.profitLoss || 0)
+            ,isInstallment: Boolean(t.isInstallment), installmentCount: Number(t.installmentCount || 1),
+            installmentAmount: Number(t.installmentAmount || 0),
+            installmentInterestRate: Number(t.installmentInterestRate || 0),
+            installmentInterestAmount: Number(t.installmentInterestAmount || 0),
+            installmentTotal: Number(t.installmentTotal || t.amount || 0)
         });
     });
 
@@ -1046,7 +1525,8 @@ function updateTransactionsUI() {
         const sign = isExpense ? '-' : isTransfer ? '↔' : '+';
         const amountClass = isExpense ? 'expense' : isTransfer ? 'transfer' : 'income';
         const currencySymbol = item.accountCurrency === 'USD' ? '$' : item.accountCurrency === 'EUR' ? '€' : item.accountCurrency === 'GRAM_ALTIN' || item.accountCurrency === 'CEYREK_ALTIN' ? '🪙' : '₺';
-        const amountDisplay = isHidden ? '₺••••••' : `${sign}${currencySymbol}${(item.amount || 0).toFixed(2)}`;
+        const amount = Number(item.amount) || 0;
+        const amountDisplay = isHidden ? '₺••••••' : `${sign}${currencySymbol}${amount.toFixed(2)}`;
          const purchaseRateDisplay = !isTransfer && item.purchaseRate > 0
             ? `<div class="transaction-rate-modern">Alış kuru: ${getCurrencyRateLabel(item.accountCurrency, item.purchaseRate)}</div>`
             : '';
@@ -1056,10 +1536,13 @@ function updateTransactionsUI() {
         const profitLossDisplay = !isTransfer && item.profitLoss !== 0
             ? `<div class="transaction-rate-modern">${item.profitLoss > 0 ? 'Kâr' : 'Zarar'}: ${item.profitLoss > 0 ? '+' : '-'}₺${Math.abs(item.profitLoss).toFixed(2)}</div>`
             : '';
+        const installmentDisplay = !isTransfer && item.isInstallment
+            ? `<div class="transaction-rate-modern"><i class="fas fa-credit-card"></i> ${item.installmentCount} taksit · Faiz: %${item.installmentInterestRate.toFixed(2)} · Aylık ₺${item.installmentAmount.toFixed(2)} · Toplam ₺${item.installmentTotal.toFixed(2)} · Sonraki: ${new Date(new Date(`${item.date}T12:00:00`).setMonth(new Date(`${item.date}T12:00:00`).getMonth() + 1)).toLocaleDateString('tr-TR')}</div>`
+            : '';
         
         let deleteBtn = '';
         if (item.isTransfer) deleteBtn = `<button class="delete-btn" onclick="deleteTransfer('${item.id}')"><i class="fas fa-trash"></i></button>`;
-        else deleteBtn = `<button class="delete-btn" onclick="deleteTransaction('${item.id}')"><i class="fas fa-trash"></i></button>`;
+        else deleteBtn = `<div class="transaction-actions"><button class="edit-transaction-btn" onclick="editTransaction('${item.id}')" title="İşlemi düzenle"><i class="fas fa-edit"></i></button><button class="delete-btn" onclick="deleteTransaction('${item.id}')" title="İşlemi sil"><i class="fas fa-trash"></i></button></div>`;
         
         let receiptIcon = '';
         if (item.receiptBase64) receiptIcon = `<button class="receipt-link" onclick="showReceipt('${item.receiptBase64}')" title="Fişi Gör"><i class="fas fa-receipt"></i></button>`;
@@ -1067,8 +1550,8 @@ function updateTransactionsUI() {
         return `<div class="transaction-card-modern">
             <div class="transaction-icon-modern ${amountClass}"><i class="fas ${icon}"></i></div>
             <div class="transaction-info-modern">
-                <div class="transaction-title-modern">${item.category}</div>
-                <div class="transaction-subtitle-modern">${item.description} • ${item.date}${purchaseRateDisplay}${transactionRateDisplay}${profitLossDisplay}</div>
+                <div class="transaction-title-modern">${escapeHtml(item.category)}</div>
+                <div class="transaction-subtitle-modern">${escapeHtml(item.description)} • ${escapeHtml(item.date)}${purchaseRateDisplay}${transactionRateDisplay}${profitLossDisplay}${installmentDisplay}</div>
             </div>
             ${receiptIcon}
             <div class="transaction-amount-modern ${amountClass}">${amountDisplay}</div>
@@ -1087,10 +1570,53 @@ function updateTransactionsUI() {
         if (filterAccount !== 'all') filtered = filtered.filter(t => t.accountId === filterAccount || t.fromAccountId === filterAccount);
         allList.innerHTML = filtered.length === 0 ? '<p class="empty-state">Bu filtrede işlem bulunamadı</p>' : filtered.map(createCard).join('');
     }
+
+    window.editTransaction = function(id) {
+        const transaction = transactions.find(item => item.id === id);
+        if (!transaction || !currentUser || isHidden) {
+            if (isHidden) showToast('İşlemi düzenlemek için önce gizlilik modunu kapatın.', 'error');
+            return;
+        }
+        const recurring = recurringTransactions.find(item => item.id === transaction.recurringId)
+            || recurringTransactions.find(item => item.accountId === transaction.accountId
+                && item.description === transaction.description
+                && Number(item.amount) === Number(transaction.amount));
+        editingTransactionId = id;
+        selectedType = transaction.type === 'income' ? 'income' : 'expense';
+        const typeButton = document.querySelector(`.type-btn[data-type="${selectedType}"]`);
+        if (typeButton) typeButton.click();
+        document.getElementById('accountSelect').value = transaction.accountId;
+        document.getElementById('category').value = transaction.category || '';
+        document.getElementById('amount').value = transaction.amount || '';
+        document.getElementById('description').value = transaction.description || '';
+        document.getElementById('date').value = transaction.date || '';
+        document.getElementById('transactionPurchaseRate').value = transaction.purchaseRate || '';
+        document.getElementById('isInstallment').checked = Boolean(transaction.isInstallment);
+        document.getElementById('installmentOptions').hidden = !transaction.isInstallment;
+        document.getElementById('installmentCount').value = transaction.installmentCount || 2;
+        document.getElementById('installmentInterestRate').value = transaction.installmentInterestRate || 0;
+        const hasRecurringSettings = Boolean(recurring || transaction.isRecurringSource);
+        document.getElementById('isRecurring').checked = hasRecurringSettings;
+        document.getElementById('recurringOptions').hidden = !hasRecurringSettings;
+        if (hasRecurringSettings) {
+            document.getElementById('recurringFrequency').value = recurring?.frequency || 'monthly';
+            document.getElementById('recurringEndDate').value = recurring?.endDate || '';
+        }
+        updateTransactionPurchaseFields();
+        const submitButton = document.getElementById('transactionSubmitBtn');
+        if (submitButton) submitButton.innerHTML = '<i class="fas fa-save"></i> Değişiklikleri Kaydet';
+        document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+        document.getElementById('add-transaction').classList.add('active');
+        document.querySelectorAll('.sidebar-link').forEach(link => link.classList.toggle('active', link.dataset.page === 'transactions'));
+    };
 }
 
 function showReceipt(base64Data) {
     const win = window.open();
+    if (!win) {
+        showToast('Fişi görüntülemek için açılır pencerelere izin verin.', 'error');
+        return;
+    }
     win.document.write(`<img src="${base64Data}" style="max-width:100%;">`);
 }
 
@@ -1103,12 +1629,12 @@ function updateGoalsUI() {
         const percentage = Math.min(progress, 100).toFixed(1);
         const currentDisplay = isHidden ? '₺••••••' : `₺${(goal.current || 0).toFixed(2)}`;
         const targetDisplay = isHidden ? '₺••••••' : `₺${(goal.amount || 0).toFixed(2)}`;
-        const linkedAccount = goal.accountName ? `<small class="goal-linked-account"><i class="fas fa-link"></i> ${goal.accountName}</small>` : '';
+        const linkedAccount = goal.accountName ? `<small class="goal-linked-account"><i class="fas fa-link"></i> ${escapeHtml(goal.accountName)}</small>` : '';
         return `<div class="goal-card">
-            <div class="goal-card-header"><div><h3>${goal.name}</h3>${linkedAccount}</div><button class="delete-goal-btn" onclick="deleteGoal('${goal.id}')"><i class="fas fa-trash"></i></button></div>
+            <div class="goal-card-header"><div><h3>${escapeHtml(goal.name)}</h3>${linkedAccount}</div><button class="delete-goal-btn" onclick="deleteGoal('${escapeHtml(goal.id)}')"><i class="fas fa-trash"></i></button></div>
             <div class="goal-progress-bar"><div class="goal-progress-fill" style="width: ${percentage}%;"></div></div>
             <div class="goal-amounts"><span>${currentDisplay}</span><span class="goal-percentage">%${percentage}</span><span>${targetDisplay}</span></div>
-            <button class="add-btn" style="margin-top:10px; width:100%; justify-content:center;" onclick="addToGoal('${goal.id}')"><i class="fas fa-plus"></i> Para Ekle</button>
+            <button class="add-btn" style="margin-top:10px; width:100%; justify-content:center;" onclick="addToGoal('${escapeHtml(goal.id)}')"><i class="fas fa-plus"></i> Para Ekle</button>
         </div>`;
     }).join('');
 }
@@ -1221,8 +1747,18 @@ window.deleteTransaction = async function(id) {
         const transaction = transactions.find(t => t.id === id);
         if (transaction) {
             const account = accounts.find(a => a.id === transaction.accountId);
+            const batch = db.batch();
             if (account) {
-                const newBalance = transaction.type === 'income' ? account.balance - transaction.amount : account.balance + transaction.amount;
+                // Taksitli işlem hesabı toplam tutarla etkiler; yalnızca anapara
+                // ile geri almak hesabı eksik bırakıyordu.
+                const impact = transaction.type === 'income'
+                    ? Number(transaction.amount || 0)
+                    : Number(transaction.isInstallment
+                        ? (transaction.installmentTotal || transaction.amount)
+                        : transaction.amount || 0);
+                const newBalance = transaction.type === 'income'
+                    ? Number(account.balance || 0) - impact
+                    : Number(account.balance || 0) + impact;
                 const updates = { balance: newBalance };
                 if (isInvestmentAccount(account)) {
                     updates.quantity = newBalance;
@@ -1230,16 +1766,20 @@ window.deleteTransaction = async function(id) {
                     const currentRate = getAccountOpeningRate(account);
                     if (transactionRate > 0 && newBalance > 0) {
                         if (transaction.type === 'income') {
-                            updates.buyPrice = ((Number(account.balance) * currentRate) - (transaction.amount * transactionRate)) / newBalance;
+                            updates.buyPrice = ((Number(account.balance) * currentRate) - (impact * transactionRate)) / newBalance;
                         } else {
-                            updates.buyPrice = ((Number(account.balance) * currentRate) + (transaction.amount * transactionRate)) / newBalance;
+                            updates.buyPrice = ((Number(account.balance) * currentRate) + (impact * transactionRate)) / newBalance;
                         }
                         updates.openingRate = updates.buyPrice;
                     }
                 }
-                await db.collection('users').doc(currentUser.uid).collection('accounts').doc(account.id).update(updates);
+                batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(account.id), updates);
             }
-            await db.collection('users').doc(currentUser.uid).collection('transactions').doc(id).delete();
+            batch.delete(db.collection('users').doc(currentUser.uid).collection('transactions').doc(id));
+            if (transaction.isRecurringSource && transaction.recurringId) {
+                batch.delete(db.collection('users').doc(currentUser.uid).collection('recurringTransactions').doc(transaction.recurringId));
+            }
+            await batch.commit();
         }
         showToast('İşlem silindi!', 'success');
         await loadUserData();
@@ -1254,9 +1794,22 @@ window.deleteTransfer = async function(id) {
         if (transfer) {
             const fromAccount = accounts.find(a => a.id === transfer.fromAccountId);
             const toAccount = accounts.find(a => a.id === transfer.toAccountId);
-            if (fromAccount) await db.collection('users').doc(currentUser.uid).collection('accounts').doc(fromAccount.id).update({ balance: fromAccount.balance + transfer.amount });
-            if (toAccount) await db.collection('users').doc(currentUser.uid).collection('accounts').doc(toAccount.id).update({ balance: toAccount.balance - transfer.amount });
-            await db.collection('users').doc(currentUser.uid).collection('transfers').doc(id).delete();
+            const batch = db.batch();
+            const amount = Number(transfer.amount || 0);
+            if (fromAccount) batch.update(
+                db.collection('users').doc(currentUser.uid).collection('accounts').doc(fromAccount.id),
+                { balance: Number(fromAccount.balance || 0) + amount }
+            );
+            if (toAccount) batch.update(
+                db.collection('users').doc(currentUser.uid).collection('accounts').doc(toAccount.id),
+                { balance: Number(toAccount.balance || 0) - amount }
+            );
+            batch.delete(db.collection('users').doc(currentUser.uid).collection('transfers').doc(id));
+            const linkedPayment = transactions.find(item => item.transferId === id);
+            if (linkedPayment) {
+                batch.delete(db.collection('users').doc(currentUser.uid).collection('transactions').doc(linkedPayment.id));
+            }
+            await batch.commit();
         }
         showToast('Transfer silindi!', 'success');
         await loadUserData();
@@ -1283,7 +1836,7 @@ function updateCharts() {
     // Kategori bazlı harcama
     const expenses = transactions.filter(t => t.type === 'expense');
     const categoryTotals = {};
-    expenses.forEach(e => { categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount; });
+    expenses.forEach(e => { categoryTotals[e.category] = (categoryTotals[e.category] || 0) + (Number(e.amount) || 0); });
     if (hidden) {
         if (expenseChart) { expenseChart.data.labels = []; expenseChart.data.datasets[0].data = []; expenseChart.update(); }
     } else if (!expenseChart) {
@@ -1303,8 +1856,8 @@ function updateCharts() {
     transactions.forEach(t => {
         const month = t.date.substring(0, 7);
         if (!monthlyData[month]) monthlyData[month] = { income: 0, expense: 0 };
-        if (t.type === 'income') monthlyData[month].income += t.amount;
-        else monthlyData[month].expense += t.amount;
+        if (t.type === 'income') monthlyData[month].income += Number(t.amount) || 0;
+        else monthlyData[month].expense += Number(t.amount) || 0;
     });
     transfers.forEach(t => {
         const month = t.date.substring(0, 7);
@@ -1431,18 +1984,18 @@ async function clearAllData() {
     if (!confirm('Tüm veriler silinecek. Emin misiniz?')) return;
     if (!currentUser) return;
     try {
-        for (const collection of ['accounts', 'transactions', 'transfers', 'goals']) {
+        for (const collection of ['accounts', 'transactions', 'transfers', 'recurringTransactions', 'goals']) {
             const snapshot = await db.collection('users').doc(currentUser.uid).collection(collection).get();
             for (const doc of snapshot.docs) await doc.ref.delete();
         }
-        accounts = []; transactions = []; transfers = []; goals = [];
+        accounts = []; transactions = []; transfers = []; recurringTransactions = []; goals = [];
         updateAllUI();
         showToast('Tüm veriler silindi!', 'success');
     } catch (e) { showToast('Silme hatası: ' + e.message, 'error'); }
 }
 
 function exportData() {
-    const data = { settings: { currency: currentCurrency, currentMonth: currentMonth, selectedAccounts: Array.from(selectedAccounts), themeColor: currentThemeColor }, accounts, transactions, transfers, goals };
+    const data = { settings: { currency: currentCurrency, currentMonth: currentMonth, selectedAccounts: Array.from(selectedAccounts), themeColor: currentThemeColor }, accounts, transactions, transfers, recurringTransactions, goals };
     const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data, null, 2));
     const link = document.createElement('a');
     link.setAttribute('href', dataUri);
@@ -1464,10 +2017,21 @@ async function importData(file) {
                 if (data.settings.themeColor) { currentThemeColor = data.settings.themeColor; applyThemeColor(currentThemeColor); }
                 await db.collection('users').doc(currentUser.uid).set({ currency: currentCurrency, currentMonth: currentMonth, selectedAccounts: Array.from(selectedAccounts), themeColor: currentThemeColor }, { merge: true });
             }
-            if (data.accounts) for (const account of data.accounts) { const { id, ...rest } = account; await db.collection('users').doc(currentUser.uid).collection('accounts').add(rest); }
-            if (data.transactions) for (const tx of data.transactions) { const { id, ...rest } = tx; await db.collection('users').doc(currentUser.uid).collection('transactions').add(rest); }
-            if (data.transfers) for (const tr of data.transfers) { const { id, ...rest } = tr; await db.collection('users').doc(currentUser.uid).collection('transfers').add(rest); }
-            if (data.goals) for (const goal of data.goals) { const { id, ...rest } = goal; await db.collection('users').doc(currentUser.uid).collection('goals').add(rest); }
+            // Dışa aktarılan ID'leri koru; aksi halde transaction.accountId ve
+            // recurringId referansları yeni hesaplara bağlanamıyordu.
+            const importCollection = async (name, items) => {
+                if (!Array.isArray(items)) return;
+                for (const item of items) {
+                    const { id, ...rest } = item || {};
+                    const ref = id && typeof id === 'string' ? db.collection('users').doc(currentUser.uid).collection(name).doc(id) : db.collection('users').doc(currentUser.uid).collection(name).doc();
+                    await ref.set(rest);
+                }
+            };
+            await importCollection('accounts', data.accounts);
+            await importCollection('transactions', data.transactions);
+            await importCollection('transfers', data.transfers);
+            await importCollection('recurringTransactions', data.recurringTransactions);
+            await importCollection('goals', data.goals);
             await loadUserData();
             showToast('Veriler başarıyla içe aktarıldı!', 'success');
         } catch (error) { showToast('Dosya okunamadı: ' + error.message, 'error'); }
@@ -1490,7 +2054,7 @@ function startVoiceRecognition() {
     recognition.start();
     recognition.onresult = function(event) {
         const transcript = event.results[0][0].transcript;
-        document.getElementById('voiceResult').innerHTML = `<p><strong>Algılanan:</strong> "${transcript}"</p>`;
+        document.getElementById('voiceResult').innerHTML = `<p><strong>Algılanan:</strong> "${escapeHtml(transcript)}"</p>`;
         processVoiceCommand(transcript);
     };
     recognition.onerror = function(event) {
@@ -1574,7 +2138,7 @@ async function handleReceiptUpload(input) {
     try {
         const result = await Tesseract.recognize(file, 'tur');
         const text = result.data.text;
-        preview.innerHTML += `<p><strong>Okunan Metin:</strong></p><pre style="white-space:pre-wrap; font-size:12px;">${text}</pre>`;
+        preview.innerHTML += `<p><strong>Okunan Metin:</strong></p><pre style="white-space:pre-wrap; font-size:12px;">${escapeHtml(text)}</pre>`;
         
         const amountMatch = text.match(/(\d+[.,]\d{2})\s*₺|₺\s*(\d+[.,]\d{2})|(\d+[.,]\d{2})\s*TL/);
         if (amountMatch) {
@@ -1651,6 +2215,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Gizlilik butonu
     document.getElementById('privacyModeBtn').addEventListener('click', togglePrivacyMode);
+    document.getElementById('assistantForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const input = document.getElementById('assistantQuestion');
+        askFinanceAssistant(input.value);
+        input.value = '';
+    });
+    document.querySelectorAll('.assistant-suggestion').forEach(button => {
+        button.addEventListener('click', () => {
+            const question = button.dataset.question || '';
+            document.getElementById('assistantQuestion').value = question;
+            askFinanceAssistant(question);
+        });
+    });
 
     // Göz butonu
     document.getElementById('toggleBalanceBtn').addEventListener('click', function(e) {
@@ -1682,6 +2259,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('accountSummaryModal').addEventListener('click', (event) => {
         if (event.target.id === 'accountSummaryModal') event.currentTarget.style.display = 'none';
+    });
+    document.getElementById('upcomingInstallmentsCard').addEventListener('click', showInstallmentSummary);
+    document.getElementById('upcomingInstallmentsCard').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            showInstallmentSummary();
+        }
+    });
+    document.getElementById('closeInstallmentSummary').addEventListener('click', () => {
+        document.getElementById('installmentSummaryModal').style.display = 'none';
+    });
+    document.getElementById('installmentSummaryModal').addEventListener('click', (event) => {
+        if (event.target.id === 'installmentSummaryModal') event.currentTarget.style.display = 'none';
     });
 
     document.getElementById('isRecurring').addEventListener('change', (event) => {
@@ -1735,6 +2325,13 @@ document.addEventListener('DOMContentLoaded', () => {
             balance: isInvestment ? quantity : (parseFloat(document.getElementById('accountBalance').value) || 0),
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
+        if (accountData.type === 'credit') {
+            accountData.creditLimit = parseFloat(document.getElementById('accountCreditLimit').value) || 0;
+            accountData.statementDay = parseInt(document.getElementById('accountStatementDay').value, 10) || null;
+            accountData.dueDay = parseInt(document.getElementById('accountDueDay').value, 10) || null;
+            accountData.minimumPaymentRate = parseFloat(document.getElementById('accountMinimumPaymentRate').value) || 20;
+            accountData.balance = -(Math.abs(accountData.balance));
+        }
         if (isInvestment) {
             accountData.quantity = quantity;
             accountData.buyPrice = buyPrice;
@@ -1763,11 +2360,35 @@ document.addEventListener('DOMContentLoaded', () => {
             link.classList.add('active');
             document.getElementById('sidebar').classList.remove('open');
             document.getElementById('sidebarOverlay').classList.remove('show');
+            if (link.dataset.assistantTarget === 'true') {
+                setTimeout(() => {
+                    const assistant = document.getElementById('finance-assistant');
+                    assistant?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    document.getElementById('assistantQuestion')?.focus({ preventScroll: true });
+                }, 80);
+            }
             if (page === 'reports') setTimeout(updateCharts, 500);
         });
     });
+    const reportPeriodSelect = document.getElementById('reportPeriod');
+    if (reportPeriodSelect) {
+        reportPeriodSelect.addEventListener('change', (event) => {
+            reportPeriod = event.target.value;
+            updateAdvancedReports();
+        });
+    }
 
     document.getElementById('newTransactionBtn').addEventListener('click', () => {
+        editingTransactionId = null;
+        document.getElementById('transactionForm').reset();
+        document.getElementById('date').value = new Date().toISOString().split('T')[0];
+        document.getElementById('recurringOptions').hidden = true;
+        document.getElementById('installmentOptions').hidden = true;
+        document.getElementById('creditInstallmentDetails').hidden = true;
+        document.getElementById('transactionSubmitBtn').innerHTML = '<i class="fas fa-save"></i> Kaydet';
+        selectedType = 'expense';
+        document.querySelectorAll('.type-btn').forEach(button => button.classList.toggle('active', button.dataset.type === 'expense'));
+        updateCategorySelect();
         document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
         document.getElementById('add-transaction').classList.add('active');
         document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
@@ -1790,7 +2411,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentTheme = document.body.getAttribute('data-theme');
         const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
         document.body.setAttribute('data-theme', newTheme);
-        localStorage.setItem('theme', newTheme);
+        localStorage.setItem('theme-v2', newTheme);
         document.querySelector('#themeBtn i').className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
     });
 
@@ -1904,6 +2525,18 @@ document.addEventListener('DOMContentLoaded', () => {
             type: isInvestment ? 'investment' : document.getElementById('editAccountType').value,
             balance: isInvestment ? quantity : (parseFloat(document.getElementById('editAccountBalance').value) || 0)
         };
+        if (updates.type === 'credit') {
+            updates.creditLimit = parseFloat(document.getElementById('editAccountCreditLimit').value) || 0;
+            updates.statementDay = parseInt(document.getElementById('editAccountStatementDay').value, 10) || null;
+            updates.dueDay = parseInt(document.getElementById('editAccountDueDay').value, 10) || null;
+            updates.minimumPaymentRate = parseFloat(document.getElementById('editAccountMinimumPaymentRate').value) || 20;
+            updates.balance = -(Math.abs(updates.balance));
+        } else {
+            updates.creditLimit = firebase.firestore.FieldValue.delete();
+            updates.statementDay = firebase.firestore.FieldValue.delete();
+            updates.dueDay = firebase.firestore.FieldValue.delete();
+            updates.minimumPaymentRate = firebase.firestore.FieldValue.delete();
+        }
         if (isInvestment) {
             updates.quantity = quantity;
             updates.buyPrice = buyPrice;
@@ -1932,10 +2565,14 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('accountType').addEventListener('change', (e) => {
         const balanceInput = document.getElementById('accountBalance');
         const hintText = document.getElementById('balanceHint');
-        if (e.target.value === 'credit') {
+        const creditDetails = document.getElementById('creditCardDetails');
+        const creditInputs = creditDetails.querySelectorAll('input');
+        if (e.target.value === 'credit' || e.target.value === 'debt') {
             balanceInput.min = "-1000000";
             balanceInput.placeholder = "0.00 (Borç için negatif girin)";
-            hintText.textContent = "Kredi kartı borcu için negatif değer girin (örn: -1500)";
+            hintText.textContent = e.target.value === 'debt'
+                ? "Borç tutarı için negatif değer girin (örn: -1500)"
+                : "Kredi kartı borcu için negatif değer girin (örn: -1500)";
             hintText.style.color = "#f44336";
         } else {
             balanceInput.removeAttribute('min');
@@ -1943,6 +2580,13 @@ document.addEventListener('DOMContentLoaded', () => {
             hintText.textContent = "Pozitif bakiye girin (0 olabilir)";
             hintText.style.color = "";
         }
+        const isCredit = e.target.value === 'credit';
+        creditDetails.hidden = !isCredit;
+        creditInputs.forEach(input => { input.required = isCredit; });
+    });
+    document.getElementById('editAccountType').addEventListener('change', updateEditAccountFields);
+    document.getElementById('isInstallment').addEventListener('change', (e) => {
+        document.getElementById('installmentOptions').hidden = !e.target.checked;
     });
 
     // İşlem tipi
@@ -1977,7 +2621,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const accountId = document.getElementById('accountSelect').value;
         const amount = parseFloat(document.getElementById('amount').value);
         const account = accounts.find(a => a.id === accountId);
-        if (!accountId || !amount) { showToast('Lütfen tüm alanları doldurun!', 'error'); return; }
+        if (!accountId || !amount || !account) { showToast('Lütfen geçerli bir hesap ve tutar seçin!', 'error'); return; }
         const isInvestment = isInvestmentAccount(account);
         const purchaseRate = isInvestment
             ? parseFloat(document.getElementById('transactionPurchaseRate').value)
@@ -1991,8 +2635,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const frequency = document.getElementById('recurringFrequency').value;
         const endDate = document.getElementById('recurringEndDate').value || null;
         const transactionDate = document.getElementById('date').value;
+        const isInstallment = account?.type === 'credit' && document.getElementById('isInstallment').checked;
+        const installmentCount = isInstallment ? Math.max(2, parseInt(document.getElementById('installmentCount').value, 10) || 2) : 1;
+        const installmentInterestRate = isInstallment
+            ? Math.min(100, Math.max(0, parseFloat(document.getElementById('installmentInterestRate').value) || 0))
+            : 0;
+        const installmentInterestAmount = isInstallment ? amount * installmentInterestRate / 100 : 0;
+        const installmentTotal = amount + installmentInterestAmount;
+        const installmentAmount = isInstallment ? installmentTotal / installmentCount : amount;
         if (isRecurring && endDate && endDate < transactionDate) {
             showToast('Tekrarlayan işlemin bitiş tarihi başlangıç tarihinden önce olamaz.', 'error');
+            return;
+        }
+        if (isRecurring && !frequency) {
+            showToast('Tekrarlayan işlem sıklığını seçin.', 'error');
             return;
         }
         const transactionRate = isInvestmentAccount(account)
@@ -2002,7 +2658,139 @@ document.addEventListener('DOMContentLoaded', () => {
             ? (transactionRate - purchaseRate) * amount
             : 0;
         try {
-            await db.collection('users').doc(currentUser.uid).collection('transactions').add({
+            if (editingTransactionId) {
+                const oldTransaction = transactions.find(item => item.id === editingTransactionId);
+                if (!oldTransaction) throw new Error('Düzenlenecek işlem bulunamadı.');
+                const oldAccount = accounts.find(item => item.id === oldTransaction.accountId);
+                const oldImpact = oldTransaction.type === 'income'
+                    ? Number(oldTransaction.amount || 0)
+                    : Number(oldTransaction.isInstallment ? oldTransaction.installmentTotal || oldTransaction.amount : oldTransaction.amount || 0);
+                const newImpact = selectedType === 'income' ? amount : (isInstallment ? installmentTotal : amount);
+                const recurringCollection = db.collection('users').doc(currentUser.uid).collection('recurringTransactions');
+                const oldRecurring = recurringTransactions.find(item => item.id === oldTransaction.recurringId)
+                    || recurringTransactions.find(item => item.accountId === oldTransaction.accountId
+                        && item.description === oldTransaction.description
+                        && Number(item.amount) === Number(oldTransaction.amount));
+                const recurringRef = isRecurring
+                    ? (oldRecurring ? recurringCollection.doc(oldRecurring.id) : recurringCollection.doc())
+                    : null;
+                const transactionData = {
+                    type: selectedType,
+                    amount,
+                    category: document.getElementById('category').value,
+                    description: document.getElementById('description').value || 'Açıklama yok',
+                    date: transactionDate,
+                    accountId,
+                    accountName: account.name,
+                    accountCurrency: account.currency,
+                    accountOpeningRate: getAccountOpeningRate(account),
+                    accountOpeningRateDate: account.openingRateDate || null,
+                    purchaseRate,
+                    transactionRate,
+                    transactionRateDate: new Date().toISOString(),
+                    profitLoss,
+                    isInstallment,
+                    installmentCount,
+                    installmentInterestRate,
+                    installmentInterestAmount,
+                    installmentTotal,
+                    installmentAmount,
+                    receiptBase64: oldTransaction.receiptBase64 || null,
+                    recurringId: recurringRef ? recurringRef.id : firebase.firestore.FieldValue.delete(),
+                    isRecurringSource: Boolean(recurringRef)
+                };
+                const batch = db.batch();
+                batch.update(db.collection('users').doc(currentUser.uid).collection('transactions').doc(editingTransactionId), transactionData);
+                if (recurringRef) {
+                    batch.set(recurringRef, {
+                        type: selectedType,
+                        amount,
+                        category: transactionData.category,
+                        description: transactionData.description,
+                        accountId,
+                        accountName: account.name,
+                        accountCurrency: account.currency,
+                        purchaseRate,
+                        frequency,
+                        nextDate: oldRecurring?.nextDate || getNextRecurringDate(transactionDate, frequency),
+                        endDate,
+                        active: true,
+                        isInstallment,
+                        installmentCount,
+                        installmentInterestRate,
+                        installmentInterestAmount,
+                        installmentTotal,
+                        installmentAmount,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        createdAt: oldRecurring?.createdAt || firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                } else if (oldRecurring) {
+                    batch.update(recurringCollection.doc(oldRecurring.id), { active: false, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                }
+                if (oldAccount && oldAccount.id === account.id) {
+                    const restoredBalance = Number(oldAccount.balance || 0) + (oldTransaction.type === 'income' ? -oldImpact : oldImpact);
+                    const adjustedBalance = restoredBalance + (selectedType === 'income' ? newImpact : -newImpact);
+                    const accountUpdates = { balance: adjustedBalance };
+                    if (isInvestment) accountUpdates.quantity = adjustedBalance;
+                    batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(account.id), accountUpdates);
+                } else {
+                    if (oldAccount) {
+                        const oldBalance = Number(oldAccount.balance || 0) + (oldTransaction.type === 'income' ? -oldImpact : oldImpact);
+                        batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(oldAccount.id), { balance: oldBalance });
+                    }
+                    const newBalance = Number(account.balance || 0) + (selectedType === 'income' ? newImpact : -newImpact);
+                    const accountUpdates = { balance: newBalance };
+                    if (isInvestment) accountUpdates.quantity = newBalance;
+                    batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(account.id), accountUpdates);
+                }
+                try {
+                    await batch.commit();
+                } catch (error) {
+                    if (error.code === 'permission-denied') {
+                        throw new Error('Kayıtlı işlem yazma izni reddedildi. Firestore kurallarında recurringTransactions yazma izni gerekli.');
+                    }
+                    throw error;
+                }
+                if (recurringRef) {
+                    const recurringData = {
+                        id: recurringRef.id,
+                        type: selectedType,
+                        amount,
+                        category: transactionData.category,
+                        description: transactionData.description,
+                        accountId,
+                        accountName: account.name,
+                        accountCurrency: account.currency,
+                        purchaseRate,
+                        frequency,
+                        nextDate: oldRecurring?.nextDate || getNextRecurringDate(transactionDate, frequency),
+                        endDate,
+                        active: true,
+                        isInstallment,
+                        installmentCount,
+                        installmentInterestRate,
+                        installmentInterestAmount,
+                        installmentTotal,
+                        installmentAmount
+                    };
+                    recurringTransactions = recurringTransactions.filter(item => item.id !== recurringRef.id);
+                    recurringTransactions.push(recurringData);
+                } else if (oldRecurring) {
+                    recurringTransactions = recurringTransactions.map(item => item.id === oldRecurring.id ? { ...item, active: false } : item);
+                }
+                editingTransactionId = null;
+                document.getElementById('transactionForm').reset();
+                document.getElementById('date').value = new Date().toISOString().split('T')[0];
+                document.getElementById('recurringOptions').hidden = true;
+                document.getElementById('installmentOptions').hidden = true;
+                document.getElementById('creditInstallmentDetails').hidden = true;
+                document.getElementById('transactionSubmitBtn').innerHTML = '<i class="fas fa-save"></i> Kaydet';
+                showToast('İşlem güncellendi!', 'success');
+                await loadUserData();
+                return;
+            }
+            const transactionRef = db.collection('users').doc(currentUser.uid).collection('transactions').doc();
+            await transactionRef.set({
                 type: selectedType,
                 amount,
                 category: document.getElementById('category').value,
@@ -2017,11 +2805,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 transactionRate,
                 transactionRateDate: new Date().toISOString(),
                 profitLoss,
+                isInstallment,
+                installmentCount,
+                installmentInterestRate,
+                installmentInterestAmount,
+                installmentTotal,
+                installmentAmount,
                 receiptBase64: receiptBase64 || null,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                isRecurringSource: isRecurring
             });
             if (account) {
-                const newBalance = selectedType === 'income' ? account.balance + amount : account.balance - amount;
+                const balanceAmount = isInstallment && selectedType === 'expense' ? installmentTotal : amount;
+                const newBalance = selectedType === 'income' ? account.balance + balanceAmount : account.balance - balanceAmount;
                 const updates = { balance: newBalance };
                 if (isInvestment) {
                     updates.quantity = newBalance;
@@ -2037,30 +2833,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 await db.collection('users').doc(currentUser.uid).collection('accounts').doc(accountId).update(updates);
             }
             if (isRecurring) {
+                const recurringData = {
+                    type: selectedType,
+                    amount,
+                    category: document.getElementById('category').value,
+                    description: document.getElementById('description').value || 'Tekrarlayan işlem',
+                    accountId,
+                    accountName: account.name,
+                    accountCurrency: account.currency,
+                    purchaseRate,
+                    frequency,
+                    nextDate: getNextRecurringDate(transactionDate, frequency),
+                    endDate,
+                    active: true,
+                    isInstallment,
+                    installmentCount,
+                    installmentInterestRate,
+                    installmentInterestAmount,
+                    installmentTotal,
+                    installmentAmount,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                const recurringRef = db.collection('users').doc(currentUser.uid).collection('recurringTransactions').doc();
                 try {
-                    await db.collection('users').doc(currentUser.uid).collection('recurringTransactions').add({
-                        type: selectedType,
-                        amount,
-                        category: document.getElementById('category').value,
-                        description: document.getElementById('description').value || 'Tekrarlayan işlem',
-                        accountId,
-                        accountName: account.name,
-                        accountCurrency: account.currency,
-                        purchaseRate,
-                        frequency,
-                        nextDate: getNextRecurringDate(transactionDate, frequency),
-                        endDate,
-                        active: true,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                    await recurringRef.set(recurringData);
+                    await transactionRef.update({ recurringId: recurringRef.id, isRecurringSource: true });
                 } catch (error) {
-                    if (error.code !== 'permission-denied') throw error;
-                    showToast('İşlem kaydedildi; tekrarlayan işlem için Firestore izni gerekli.', 'error');
+                    if (error.code === 'permission-denied') {
+                        throw new Error('İşlem kaydedildi ancak kayıtlı işlemler için Firestore yazma izni yok.');
+                    }
+                    throw error;
                 }
+                recurringTransactions.push({ id: recurringRef.id, ...recurringData, createdAt: new Date().toISOString() });
+                updateRecurringTransactionsUI();
             }
             document.getElementById('transactionForm').reset();
             document.getElementById('date').value = new Date().toISOString().split('T')[0];
             document.getElementById('recurringOptions').hidden = true;
+            document.getElementById('installmentOptions').hidden = true;
+            document.getElementById('creditInstallmentDetails').hidden = true;
+            document.getElementById('creditCardDetails').hidden = true;
             updateTransactionPurchaseFields();
             document.getElementById('receiptPreview').innerHTML = '';
             receiptBase64 = null;
@@ -2076,15 +2888,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const fromAccountId = document.getElementById('fromAccount').value;
         const toAccountId = document.getElementById('toAccount').value;
         const amount = parseFloat(document.getElementById('transferAmount').value);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            showToast('Transfer tutarı sıfırdan büyük olmalı.', 'error');
+            return;
+        }
         if (fromAccountId === toAccountId) { showToast('Kaynak ve hedef hesap aynı olamaz!', 'error'); return; }
         const fromAccount = accounts.find(a => a.id === fromAccountId);
         const toAccount = accounts.find(a => a.id === toAccountId);
         if (!fromAccount || !toAccount) { showToast('Hesaplar bulunamadı!', 'error'); return; }
-        if (fromAccount.balance < amount) { showToast('Yetersiz bakiye!', 'error'); return; }
+        if (Number(fromAccount.balance || 0) < amount) { showToast('Yetersiz bakiye!', 'error'); return; }
         const isCreditCard = toAccount.type === 'credit' || toAccount.name.toLowerCase().includes('kredi');
         console.log('Kredi kartı mı?', isCreditCard);
         try {
-            await db.collection('users').doc(currentUser.uid).collection('transfers').add({
+            const batch = db.batch();
+            const transferRef = db.collection('users').doc(currentUser.uid).collection('transfers').doc();
+            batch.set(transferRef, {
                 fromAccountId,
                 fromAccountName: fromAccount.name,
                 toAccountId,
@@ -2095,10 +2913,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 date: document.getElementById('transferDate').value,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
-            await db.collection('users').doc(currentUser.uid).collection('accounts').doc(fromAccountId).update({ balance: fromAccount.balance - amount });
-            await db.collection('users').doc(currentUser.uid).collection('accounts').doc(toAccountId).update({ balance: toAccount.balance + amount });
+            batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(fromAccountId), { balance: Number(fromAccount.balance || 0) - amount });
+            batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(toAccountId), { balance: Number(toAccount.balance || 0) + amount });
             if (isCreditCard) {
-                await db.collection('users').doc(currentUser.uid).collection('transactions').add({
+                const paymentRef = db.collection('users').doc(currentUser.uid).collection('transactions').doc();
+                batch.set(paymentRef, {
                     type: 'expense',
                     amount: amount,
                     category: '💳 Kredi Kartı Ödemesi',
@@ -2107,10 +2926,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     accountId: fromAccountId,
                     accountName: fromAccount.name,
                     accountCurrency: fromAccount.currency || 'TRY',
+                    transferId: transferRef.id,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                console.log('✅ Kredi kartı transferi masraf kaydı oluşturuldu');
             }
+            await batch.commit();
             document.getElementById('transferForm').reset();
             document.getElementById('transferDate').value = new Date().toISOString().split('T')[0];
             showToast('Transfer başarılı!', 'success');
@@ -2270,7 +3090,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('transferDate').value = new Date().toISOString().split('T')[0];
 
     // Tema
-    const savedTheme = localStorage.getItem('theme') || 'light';
+    const savedTheme = localStorage.getItem('theme-v2') || 'light';
     document.body.setAttribute('data-theme', savedTheme);
     document.querySelector('#themeBtn i').className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
 
