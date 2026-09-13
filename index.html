@@ -16,8 +16,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <!-- Tesseract.js OCR -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 </head>
 <body>
     <!-- Login Modal -->
@@ -320,15 +318,19 @@
 
                     <div class="form-group">
                         <label>Fiş / Görsel</label>
-                        <input type="file" id="receiptFile" accept="image/*" capture="environment" style="display:none;" onchange="handleReceiptUpload(this)">
-                        <button type="button" class="add-btn" onclick="document.getElementById('receiptFile').click()">
-                            <i class="fas fa-camera"></i> Fiş Yükle
-                        </button>
-                        <button type="button" class="add-btn" id="voiceBtn" onclick="startVoiceRecognition()" style="margin-left:10px;">
-                            <i class="fas fa-microphone"></i> Sesli Komut
-                        </button>
+                        <div class="receipt-upload-actions">
+                            <button type="button" class="add-btn" id="openReceiptCameraBtn"><i class="fas fa-camera"></i> Fişi Fotoğrafla</button>
+                            <input type="file" id="receiptFile" accept="image/*" capture="environment" style="display:none;" onchange="handleReceiptUpload(this)">
+                            <button type="button" class="add-btn" onclick="document.getElementById('receiptFile').click()">
+                                <i class="fas fa-upload"></i> Galeriden Seç
+                            </button>
+                            <button type="button" class="add-btn" id="voiceBtn" onclick="startVoiceRecognition()">
+                                <i class="fas fa-microphone"></i> Sesli Komut
+                            </button>
+                        </div>
+                        <small>Fişi fotoğraflayın, yapay zekâ tutarı, tarihi ve kategoriyi otomatik doldursun; siz sadece kontrol edip kaydedin.</small>
                     </div>
-                    <div id="receiptPreview" style="margin-top:10px;"></div>
+                    <div id="receiptPreview" class="receipt-preview"></div>
                     <div id="voiceResult" style="margin-top:10px;"></div>
 
                     <button type="submit" id="transactionSubmitBtn" class="submit-btn"><i class="fas fa-save"></i> Kaydet</button>
@@ -500,6 +502,25 @@
                             <button type="submit" id="confirmModernInput" class="submit-btn"><i class="fas fa-check"></i> Onayla</button>
                         </div>
                     </form>
+                </div>
+            </div>
+
+            <!-- Receipt Camera Modal -->
+            <div id="receiptCameraModal" class="modal receipt-camera-modal" style="display:none;">
+                <div class="modal-content receipt-camera-content">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-camera"></i> Fişi Fotoğrafla</h2>
+                        <button id="closeReceiptCamera" type="button" class="close-btn">&times;</button>
+                    </div>
+                    <p class="modal-subtitle">Fişi net ve iyi ışıkta çerçeveye alın, sonra çekin.</p>
+                    <div class="receipt-camera-viewport">
+                        <video id="receiptCameraVideo" autoplay playsinline muted></video>
+                        <canvas id="receiptCameraCanvas" hidden></canvas>
+                    </div>
+                    <div class="receipt-camera-actions">
+                        <button type="button" id="receiptCaptureBtn" class="submit-btn"><i class="fas fa-camera"></i> Çek</button>
+                        <button type="button" id="receiptSwitchCameraBtn" class="cancel-btn"><i class="fas fa-camera-rotate"></i> Kamerayı Değiştir</button>
+                    </div>
                 </div>
             </div>
 
@@ -675,6 +696,34 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Receipt Camera Modal -->
+    <div id="receiptCameraModal" class="modal receipt-camera-modal" style="display:none;">
+        <div class="modal-content receipt-camera-content">
+            <div class="receipt-camera-header">
+                <h2><i class="fas fa-camera"></i> Fiş Fotoğrafla</h2>
+                <button id="closeReceiptCamera" class="close-btn">&times;</button>
+            </div>
+            <div class="receipt-camera-body">
+                <video id="receiptCameraVideo" autoplay playsinline></video>
+                <canvas id="receiptCameraCanvas" style="display:none;"></canvas>
+                <div class="receipt-camera-overlay">
+                    <div class="receipt-camera-frame"></div>
+                </div>
+            </div>
+            <div class="receipt-camera-actions">
+                <button type="button" id="receiptSwitchCameraBtn" class="camera-action-btn" title="Kamera Değiştir">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <button type="button" id="receiptCaptureBtn" class="camera-capture-btn" title="Fotoğraf Çek">
+                    <i class="fas fa-circle"></i>
+                </button>
+                <button type="button" id="closeReceiptCameraBtn" class="camera-action-btn" title="Kapat">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <script src="js/core.js"></script>
+    <script src="js/main.js"></script>
 </body>
 </html>

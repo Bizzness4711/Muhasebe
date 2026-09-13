@@ -1,0 +1,970 @@
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('🚀 Uygulama başlatıldı');
+
+    // Gizlilik butonu
+    document.getElementById('privacyModeBtn').addEventListener('click', togglePrivacyMode);
+    document.getElementById('assistantForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const input = document.getElementById('assistantQuestion');
+        askFinanceAssistant(input.value);
+        input.value = '';
+    });
+    document.querySelectorAll('.assistant-suggestion').forEach(button => {
+        button.addEventListener('click', () => {
+            const question = button.dataset.question || '';
+            document.getElementById('assistantQuestion').value = question;
+            askFinanceAssistant(question);
+        });
+    });
+
+    // Göz butonu
+    document.getElementById('toggleBalanceBtn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        toggleBalanceVisibility();
+    });
+
+    // Bakiye kartı (özet modal)
+    document.getElementById('balanceCard').addEventListener('click', showAccountSummary);
+    document.getElementById('notificationBtn').addEventListener('click', (event) => {
+        event.stopPropagation();
+        const panel = document.getElementById('notificationPanel');
+        panel.hidden = !panel.hidden;
+        updateNotificationsUI();
+    });
+    document.getElementById('clearNotificationsBtn').addEventListener('click', () => {
+        notifications = notifications.map(item => ({ ...item, read: true }));
+        saveNotifications();
+        updateNotificationsUI();
+    });
+    document.getElementById('enableNotificationsBtn').addEventListener('click', requestNotificationPermission);
+    document.getElementById('enableNotificationsSettingBtn').addEventListener('click', requestNotificationPermission);
+    document.addEventListener('click', (event) => {
+        const wrapper = document.querySelector('.notification-wrap');
+        if (wrapper && !wrapper.contains(event.target)) document.getElementById('notificationPanel').hidden = true;
+    });
+    document.getElementById('closeAccountSummary').addEventListener('click', () => {
+        document.getElementById('accountSummaryModal').style.display = 'none';
+    });
+    document.getElementById('accountSummaryModal').addEventListener('click', (event) => {
+        if (event.target.id === 'accountSummaryModal') event.currentTarget.style.display = 'none';
+    });
+    document.getElementById('upcomingInstallmentsCard').addEventListener('click', showInstallmentSummary);
+    document.getElementById('upcomingInstallmentsCard').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            showInstallmentSummary();
+        }
+    });
+    document.getElementById('closeInstallmentSummary').addEventListener('click', () => {
+        document.getElementById('installmentSummaryModal').style.display = 'none';
+    });
+    document.getElementById('installmentSummaryModal').addEventListener('click', (event) => {
+        if (event.target.id === 'installmentSummaryModal') event.currentTarget.style.display = 'none';
+    });
+
+    document.getElementById('isRecurring').addEventListener('change', (event) => {
+        document.getElementById('recurringOptions').hidden = !event.target.checked;
+    });
+
+    // Hesap ekleme modalında para birimi değişince
+    document.getElementById('accountCurrency').addEventListener('change', function() {
+        const investmentDetails = document.getElementById('investmentDetails');
+        const balanceGroup = document.getElementById('accountBalanceGroup');
+        const quantityInput = document.getElementById('accountQuantity');
+        const buyPriceInput = document.getElementById('accountBuyPrice');
+        const isInvestment = investmentCurrencies.includes(this.value);
+        if (isInvestment) {
+            investmentDetails.style.display = 'block';
+            balanceGroup.style.display = 'none';
+            quantityInput.required = true;
+            buyPriceInput.required = true;
+            // Seçilen para birimi için güncel kuru birim alış fiyatı olarak doldur
+            const rate = exchangeRates[this.value];
+            if (rate && rate > 0) {
+                buyPriceInput.value = rate.toFixed(2);
+            }
+        } else {
+            investmentDetails.style.display = 'none';
+            balanceGroup.style.display = 'block';
+            quantityInput.required = false;
+            buyPriceInput.required = false;
+            buyPriceInput.value = '';
+        }
+    });
+
+    // Hesap ekleme formu
+    document.getElementById('accountForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+        const currency = document.getElementById('accountCurrency').value;
+        const isInvestment = investmentCurrencies.includes(currency);
+        const quantity = parseFloat(document.getElementById('accountQuantity').value);
+        const buyPrice = parseFloat(document.getElementById('accountBuyPrice').value);
+        if (isInvestment && (!(quantity > 0) || !(buyPrice > 0))) {
+            showToast('Yatırım hesabı için alınan miktar ve birim alış fiyatı girin.', 'error');
+            return;
+        }
+        const accountData = {
+            name: document.getElementById('accountName').value,
+            label: document.getElementById('accountLabel').value.trim(),
+            color: document.getElementById('accountColor').value,
+            type: isInvestment ? 'investment' : document.getElementById('accountType').value,
+            currency: currency,
+            balance: isInvestment ? quantity : (parseFloat(document.getElementById('accountBalance').value) || 0),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        if (accountData.type === 'credit') {
+            accountData.creditLimit = parseFloat(document.getElementById('accountCreditLimit').value) || 0;
+            accountData.statementDay = parseInt(document.getElementById('accountStatementDay').value, 10) || null;
+            accountData.dueDay = parseInt(document.getElementById('accountDueDay').value, 10) || null;
+            accountData.minimumPaymentRate = parseFloat(document.getElementById('accountMinimumPaymentRate').value) || 20;
+            accountData.balance = -(Math.abs(accountData.balance));
+        }
+        if (isInvestment) {
+            accountData.quantity = quantity;
+            accountData.buyPrice = buyPrice;
+            accountData.openingRate = buyPrice;
+            accountData.openingRateDate = new Date().toISOString();
+        }
+        try {
+            await db.collection('users').doc(currentUser.uid).collection('accounts').add(accountData);
+            document.getElementById('accountForm').reset();
+            document.getElementById('accountCurrency').dispatchEvent(new Event('change'));
+            document.getElementById('addAccountModal').style.display = 'none';
+            showToast('Hesap eklendi!', 'success');
+            await loadUserData();
+        } catch (error) { showToast('Hesap eklenirken hata: ' + error.message, 'error'); }
+    });
+
+    // Sidebar navigasyonu
+    document.querySelectorAll('.sidebar-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const page = link.dataset.page;
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            const pageEl = document.getElementById(page);
+            if (pageEl) pageEl.classList.add('active');
+            document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sidebarOverlay').classList.remove('show');
+            if (link.dataset.assistantTarget === 'true') {
+                setTimeout(() => {
+                    const assistant = document.getElementById('finance-assistant');
+                    assistant?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    document.getElementById('assistantQuestion')?.focus({ preventScroll: true });
+                }, 80);
+            }
+            if (page === 'reports') setTimeout(updateCharts, 500);
+        });
+    });
+    const reportPeriodSelect = document.getElementById('reportPeriod');
+    if (reportPeriodSelect) {
+        reportPeriodSelect.addEventListener('change', (event) => {
+            reportPeriod = event.target.value;
+            updateAdvancedReports();
+        });
+    }
+
+    document.getElementById('newTransactionBtn').addEventListener('click', () => {
+        editingTransactionId = null;
+        document.getElementById('transactionForm').reset();
+        document.getElementById('date').value = new Date().toISOString().split('T')[0];
+        document.getElementById('recurringOptions').hidden = true;
+        document.getElementById('installmentOptions').hidden = true;
+        document.getElementById('creditInstallmentDetails').hidden = true;
+        document.getElementById('transactionSubmitBtn').innerHTML = '<i class="fas fa-save"></i> Kaydet';
+        selectedType = 'expense';
+        document.querySelectorAll('.type-btn').forEach(button => button.classList.toggle('active', button.dataset.type === 'expense'));
+        updateCategorySelect();
+        document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+        document.getElementById('add-transaction').classList.add('active');
+        document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebarOverlay').classList.remove('show');
+    });
+
+    // Menü butonu
+    document.getElementById('menuBtn').addEventListener('click', () => {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('sidebarOverlay').classList.toggle('show');
+    });
+    document.getElementById('sidebarOverlay').addEventListener('click', () => {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebarOverlay').classList.remove('show');
+    });
+
+    // Tema
+    document.getElementById('themeBtn').addEventListener('click', () => {
+        const currentTheme = document.body.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.body.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme-v2', newTheme);
+        document.querySelector('#themeBtn i').className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+    });
+
+    // Kur güncelle
+    document.getElementById('updateRatesBtn').addEventListener('click', async () => {
+        await fetchExchangeRates();
+        showToast('Kurlar güncellendi!', 'success');
+    });
+
+    // Ay navigasyonu
+    document.getElementById('prevMonth').onclick = () => window.changeMonth(-1);
+    document.getElementById('nextMonth').onclick = () => window.changeMonth(1);
+
+    // Giriş
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+            await auth.signInWithEmailAndPassword(document.getElementById('loginEmail').value, document.getElementById('loginPassword').value);
+            showToast('Giriş başarılı!', 'success');
+        } catch (error) { showToast('Giriş hatası: ' + error.message, 'error'); }
+    });
+
+    // Kayıt
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+            const result = await auth.createUserWithEmailAndPassword(document.getElementById('registerEmail').value, document.getElementById('registerPassword').value);
+            await result.user.updateProfile({ displayName: document.getElementById('registerName').value });
+            showToast('Kayıt başarılı!', 'success');
+        } catch (error) { showToast('Kayıt hatası: ' + error.message, 'error'); }
+    });
+
+    // Google girişi
+    document.getElementById('googleLogin').addEventListener('click', async () => {
+        try {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            await auth.signInWithPopup(provider);
+            showToast('Google ile giriş başarılı!', 'success');
+        } catch (error) { showToast('Google giriş hatası: ' + error.message, 'error'); }
+    });
+
+    // Çıkış
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await auth.signOut();
+        showToast('Çıkış yapıldı!', 'success');
+    });
+
+    // Auth tab
+    document.querySelectorAll('.auth-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const tabName = e.target.dataset.tab;
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+            e.target.classList.add('active');
+            document.getElementById('loginForm').style.display = tabName === 'login' ? 'block' : 'none';
+            document.getElementById('registerForm').style.display = tabName === 'register' ? 'block' : 'none';
+            document.getElementById('authPanelKicker').textContent = tabName === 'login' ? 'HOŞ GELDİNİZ' : 'İLK ADIMI ATIN';
+            document.getElementById('authPanelTitle').textContent = tabName === 'login' ? 'Tekrar hoş geldin' : 'Hesabını oluştur';
+            document.getElementById('authPanelSubtitle').textContent = tabName === 'login' ? 'Hesabınıza giriş yaparak devam edin.' : 'Bütçenizi düzenlemeye hemen başlayın.';
+        });
+    });
+
+    // Şifre göster/gizle
+    document.querySelectorAll('.auth-password-toggle').forEach(button => button.addEventListener('click', () => {
+        const input = document.getElementById(button.dataset.target);
+        const icon = button.querySelector('i');
+        input.type = input.type === 'password' ? 'text' : 'password';
+        icon.className = input.type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
+        button.setAttribute('aria-label', input.type === 'password' ? 'Şifreyi göster' : 'Şifreyi gizle');
+    }));
+
+    // Hesap ekleme modalı açma/kapama
+    document.getElementById('addAccountBtn').addEventListener('click', () => { document.getElementById('addAccountModal').style.display = 'flex'; });
+    document.getElementById('cancelAccount').addEventListener('click', () => { document.getElementById('addAccountModal').style.display = 'none'; });
+
+    // Hesap düzenleme modalı
+    document.getElementById('cancelEditAccount').addEventListener('click', () => { document.getElementById('editAccountModal').style.display = 'none'; });
+    document.getElementById('editAccountCurrency').addEventListener('change', function() {
+        updateEditAccountFields();
+        // Seçilen para birimi için güncel kuru birim alış fiyatı olarak doldur
+        const isInvestment = investmentCurrencies.includes(this.value);
+        const buyPriceInput = document.getElementById('editAccountBuyPrice');
+        if (isInvestment) {
+            const rate = exchangeRates[this.value];
+            if (rate && rate > 0) {
+                buyPriceInput.value = rate.toFixed(2);
+            }
+        } else {
+            buyPriceInput.value = '';
+        }
+    });
+    document.getElementById('editAccountForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+
+        const id = document.getElementById('editAccountId').value;
+        const account = accounts.find(item => item.id === id);
+        const currency = document.getElementById('editAccountCurrency').value;
+        const isInvestment = investmentCurrencies.includes(currency);
+        const quantity = parseFloat(document.getElementById('editAccountQuantity').value);
+        const buyPrice = parseFloat(document.getElementById('editAccountBuyPrice').value);
+        if (isInvestment && (!(quantity > 0) || !(buyPrice > 0))) {
+            showToast('Yatırım hesabı için alınan miktar ve birim alış fiyatı girin.', 'error');
+            return;
+        }
+
+        const updates = {
+            name: document.getElementById('editAccountName').value.trim(),
+            label: document.getElementById('editAccountLabel').value.trim(),
+            color: document.getElementById('editAccountColor').value,
+            currency,
+            type: isInvestment ? 'investment' : document.getElementById('editAccountType').value,
+            balance: isInvestment ? quantity : (parseFloat(document.getElementById('editAccountBalance').value) || 0)
+        };
+        if (updates.type === 'credit') {
+            updates.creditLimit = parseFloat(document.getElementById('editAccountCreditLimit').value) || 0;
+            updates.statementDay = parseInt(document.getElementById('editAccountStatementDay').value, 10) || null;
+            updates.dueDay = parseInt(document.getElementById('editAccountDueDay').value, 10) || null;
+            updates.minimumPaymentRate = parseFloat(document.getElementById('editAccountMinimumPaymentRate').value) || 20;
+            updates.balance = -(Math.abs(updates.balance));
+        } else {
+            updates.creditLimit = firebase.firestore.FieldValue.delete();
+            updates.statementDay = firebase.firestore.FieldValue.delete();
+            updates.dueDay = firebase.firestore.FieldValue.delete();
+            updates.minimumPaymentRate = firebase.firestore.FieldValue.delete();
+        }
+        if (isInvestment) {
+            updates.quantity = quantity;
+            updates.buyPrice = buyPrice;
+            if (!account || !account.openingRate) {
+                updates.openingRate = buyPrice;
+                updates.openingRateDate = new Date().toISOString();
+            }
+        } else {
+            updates.quantity = firebase.firestore.FieldValue.delete();
+            updates.buyPrice = firebase.firestore.FieldValue.delete();
+            updates.openingRate = firebase.firestore.FieldValue.delete();
+            updates.openingRateDate = firebase.firestore.FieldValue.delete();
+        }
+
+        try {
+            await db.collection('users').doc(currentUser.uid).collection('accounts').doc(id).update(updates);
+            document.getElementById('editAccountModal').style.display = 'none';
+            showToast('Hesap güncellendi!', 'success');
+            await loadUserData();
+        } catch (error) {
+            showToast('Hesap güncellenemedi: ' + error.message, 'error');
+        }
+    });
+
+    // Hesap türü
+    document.getElementById('accountType').addEventListener('change', (e) => {
+        const balanceInput = document.getElementById('accountBalance');
+        const hintText = document.getElementById('balanceHint');
+        const creditDetails = document.getElementById('creditCardDetails');
+        const creditInputs = creditDetails.querySelectorAll('input');
+        if (e.target.value === 'credit' || e.target.value === 'debt') {
+            balanceInput.min = "-1000000";
+            balanceInput.placeholder = "0.00 (Borç için negatif girin)";
+            hintText.textContent = e.target.value === 'debt'
+                ? "Borç tutarı için negatif değer girin (örn: -1500)"
+                : "Kredi kartı borcu için negatif değer girin (örn: -1500)";
+            hintText.style.color = "#f44336";
+        } else {
+            balanceInput.removeAttribute('min');
+            balanceInput.placeholder = "0.00";
+            hintText.textContent = "Pozitif bakiye girin (0 olabilir)";
+            hintText.style.color = "";
+        }
+        const isCredit = e.target.value === 'credit';
+        creditDetails.hidden = !isCredit;
+        creditInputs.forEach(input => { input.required = isCredit; });
+    });
+    document.getElementById('editAccountType').addEventListener('change', updateEditAccountFields);
+    document.getElementById('isInstallment').addEventListener('change', (e) => {
+        document.getElementById('installmentOptions').hidden = !e.target.checked;
+    });
+
+    // İşlem tipi
+    document.querySelectorAll('.type-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            selectedType = e.target.closest('.type-btn').dataset.type;
+            document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+            e.target.closest('.type-btn').classList.add('active');
+            updateCategorySelect();
+        });
+    });
+
+    document.getElementById('accountSelect').addEventListener('change', updateAccountRateInfo);
+
+    // KAMERA ENTEGRASYONU
+    let receiptCameraStream = null;
+    let receiptCameraFacingMode = 'environment';
+
+    async function openReceiptCamera() {
+        const modal = document.getElementById('receiptCameraModal');
+        const video = document.getElementById('receiptCameraVideo');
+        if (!modal || !video) return;
+
+        try {
+            receiptCameraStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: receiptCameraFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } }
+            });
+            video.srcObject = receiptCameraStream;
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Kamera erişimi hatası:', error);
+            showToast('Kamera erişimi reddedildi veya kullanılamıyor. Lütfen izin verin.', 'error');
+        }
+    }
+
+    function closeReceiptCamera() {
+        const modal = document.getElementById('receiptCameraModal');
+        const video = document.getElementById('receiptCameraVideo');
+        if (receiptCameraStream) {
+            receiptCameraStream.getTracks().forEach(track => track.stop());
+            receiptCameraStream = null;
+        }
+        if (video) video.srcObject = null;
+        if (modal) modal.style.display = 'none';
+    }
+
+    async function switchReceiptCamera() {
+        receiptCameraFacingMode = receiptCameraFacingMode === 'environment' ? 'user' : 'environment';
+        closeReceiptCamera();
+        await openReceiptCamera();
+    }
+
+    function captureReceiptPhoto() {
+        const video = document.getElementById('receiptCameraVideo');
+        const canvas = document.getElementById('receiptCameraCanvas');
+        if (!video || !canvas) return;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+
+        canvas.toBlob(async (blob) => {
+            if (!blob) return;
+            closeReceiptCamera();
+            const file = new File([blob], `receipt_${Date.now()}.jpg`, { type: 'image/jpeg' });
+            const input = document.getElementById('receiptFile');
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            handleReceiptUpload(input);
+        }, 'image/jpeg', 0.92);
+    }
+
+    // Kamera event listener'ları
+    const openReceiptCameraBtn = document.getElementById('openReceiptCameraBtn');
+    if (openReceiptCameraBtn) openReceiptCameraBtn.addEventListener('click', openReceiptCamera);
+
+    const closeReceiptCameraBtn = document.getElementById('closeReceiptCamera');
+    if (closeReceiptCameraBtn) closeReceiptCameraBtn.addEventListener('click', closeReceiptCamera);
+
+    const receiptCaptureBtn = document.getElementById('receiptCaptureBtn');
+    if (receiptCaptureBtn) receiptCaptureBtn.addEventListener('click', captureReceiptPhoto);
+
+    const receiptSwitchCameraBtn = document.getElementById('receiptSwitchCameraBtn');
+    if (receiptSwitchCameraBtn) receiptSwitchCameraBtn.addEventListener('click', switchReceiptCamera);
+
+    const receiptCameraModal = document.getElementById('receiptCameraModal');
+    if (receiptCameraModal) {
+        receiptCameraModal.addEventListener('click', (e) => {
+            if (e.target.id === 'receiptCameraModal') closeReceiptCamera();
+        });
+    }
+
+    // Kategoriler
+    const categories = {
+        expense: ['🍔 Yemek','🚗 Ulaşım','🏠 Kira','💡 Faturalar','🛒 Market','🎮 Eğlence','💊 Sağlık','📚 Eğitim','👕 Giyim','📱 Teknoloji','🎁 Hediyeler','📋 Diğer'],
+        income: ['💰 Maaş','💼 Serbest Çalışma','📈 Yatırım','🎁 Hediye','🏠 Kira Geliri','📋 Diğer']
+    };
+    function updateCategorySelect() {
+        const select = document.getElementById('category');
+        if (!select) return;
+        select.innerHTML = '<option value="">Kategori Seçin</option>';
+        categories[selectedType].forEach(category => { select.innerHTML += `<option value="${category}">${category}</option>`; });
+    }
+    updateCategorySelect();
+
+    // İşlem formu
+    document.getElementById('transactionForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+        const accountId = document.getElementById('accountSelect').value;
+        const amount = parseFloat(document.getElementById('amount').value);
+        const account = accounts.find(a => a.id === accountId);
+        if (!accountId || !amount || !account) { showToast('Lütfen geçerli bir hesap ve tutar seçin!', 'error'); return; }
+        const isInvestment = isInvestmentAccount(account);
+        const purchaseRate = isInvestment
+            ? parseFloat(document.getElementById('transactionPurchaseRate').value)
+            : 0;
+        if (isInvestment && !(purchaseRate > 0)) {
+            showToast('Döviz/altın işlemi için alış fiyatını girin.', 'error');
+            return;
+        }
+        const openingRate = getAccountOpeningRate(account);
+        const isRecurring = document.getElementById('isRecurring').checked;
+        const frequency = document.getElementById('recurringFrequency').value;
+        const endDate = document.getElementById('recurringEndDate').value || null;
+        const transactionDate = document.getElementById('date').value;
+        const isInstallment = account?.type === 'credit' && document.getElementById('isInstallment').checked;
+        const installmentCount = isInstallment ? Math.max(2, parseInt(document.getElementById('installmentCount').value, 10) || 2) : 1;
+        const installmentInterestRate = isInstallment
+            ? Math.min(100, Math.max(0, parseFloat(document.getElementById('installmentInterestRate').value) || 0))
+            : 0;
+        const installmentInterestAmount = isInstallment ? amount * installmentInterestRate / 100 : 0;
+        const installmentTotal = amount + installmentInterestAmount;
+        const installmentAmount = isInstallment ? installmentTotal / installmentCount : amount;
+        if (isRecurring && endDate && endDate < transactionDate) {
+            showToast('Tekrarlayan işlemin bitiş tarihi başlangıç tarihinden önce olamaz.', 'error');
+            return;
+        }
+        if (isRecurring && !frequency) {
+            showToast('Tekrarlayan işlem sıklığını seçin.', 'error');
+            return;
+        }
+        const transactionRate = isInvestmentAccount(account)
+            ? Number(exchangeRates[account.currency] || openingRate)
+            : 0;
+        const profitLoss = isInvestment && transactionRate > 0
+            ? (transactionRate - purchaseRate) * amount
+            : 0;
+        try {
+            if (editingTransactionId) {
+                const oldTransaction = transactions.find(item => item.id === editingTransactionId);
+                if (!oldTransaction) throw new Error('Düzenlenecek işlem bulunamadı.');
+                const oldAccount = accounts.find(item => item.id === oldTransaction.accountId);
+                const oldImpact = oldTransaction.type === 'income'
+                    ? Number(oldTransaction.amount || 0)
+                    : Number(oldTransaction.isInstallment ? oldTransaction.installmentTotal || oldTransaction.amount : oldTransaction.amount || 0);
+                const newImpact = selectedType === 'income' ? amount : (isInstallment ? installmentTotal : amount);
+                const recurringCollection = db.collection('users').doc(currentUser.uid).collection('recurringTransactions');
+                const oldRecurring = recurringTransactions.find(item => item.id === oldTransaction.recurringId)
+                    || recurringTransactions.find(item => item.accountId === oldTransaction.accountId
+                        && item.description === oldTransaction.description
+                        && Number(item.amount) === Number(oldTransaction.amount));
+                const recurringRef = isRecurring
+                    ? (oldRecurring ? recurringCollection.doc(oldRecurring.id) : recurringCollection.doc())
+                    : null;
+                const transactionData = {
+                    type: selectedType,
+                    amount,
+                    category: document.getElementById('category').value,
+                    description: document.getElementById('description').value || 'Açıklama yok',
+                    date: transactionDate,
+                    accountId,
+                    accountName: account.name,
+                    accountCurrency: account.currency,
+                    accountOpeningRate: getAccountOpeningRate(account),
+                    accountOpeningRateDate: account.openingRateDate || null,
+                    purchaseRate,
+                    transactionRate,
+                    transactionRateDate: new Date().toISOString(),
+                    profitLoss,
+                    isInstallment,
+                    installmentCount,
+                    installmentInterestRate,
+                    installmentInterestAmount,
+                    installmentTotal,
+                    installmentAmount,
+                    receiptBase64: oldTransaction.receiptBase64 || null,
+                    recurringId: recurringRef ? recurringRef.id : firebase.firestore.FieldValue.delete(),
+                    isRecurringSource: Boolean(recurringRef)
+                };
+                const batch = db.batch();
+                batch.update(db.collection('users').doc(currentUser.uid).collection('transactions').doc(editingTransactionId), transactionData);
+                if (recurringRef) {
+                    batch.set(recurringRef, {
+                        type: selectedType,
+                        amount,
+                        category: transactionData.category,
+                        description: transactionData.description,
+                        accountId,
+                        accountName: account.name,
+                        accountCurrency: account.currency,
+                        purchaseRate,
+                        frequency,
+                        nextDate: oldRecurring?.nextDate || getNextRecurringDate(transactionDate, frequency),
+                        endDate,
+                        active: true,
+                        isInstallment,
+                        installmentCount,
+                        installmentInterestRate,
+                        installmentInterestAmount,
+                        installmentTotal,
+                        installmentAmount,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        createdAt: oldRecurring?.createdAt || firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                } else if (oldRecurring) {
+                    batch.update(recurringCollection.doc(oldRecurring.id), { active: false, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                }
+                if (oldAccount && oldAccount.id === account.id) {
+                    const restoredBalance = Number(oldAccount.balance || 0) + (oldTransaction.type === 'income' ? -oldImpact : oldImpact);
+                    const adjustedBalance = restoredBalance + (selectedType === 'income' ? newImpact : -newImpact);
+                    const accountUpdates = { balance: adjustedBalance };
+                    if (isInvestment) accountUpdates.quantity = adjustedBalance;
+                    batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(account.id), accountUpdates);
+                } else {
+                    if (oldAccount) {
+                        const oldBalance = Number(oldAccount.balance || 0) + (oldTransaction.type === 'income' ? -oldImpact : oldImpact);
+                        batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(oldAccount.id), { balance: oldBalance });
+                    }
+                    const newBalance = Number(account.balance || 0) + (selectedType === 'income' ? newImpact : -newImpact);
+                    const accountUpdates = { balance: newBalance };
+                    if (isInvestment) accountUpdates.quantity = newBalance;
+                    batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(account.id), accountUpdates);
+                }
+                try {
+                    await batch.commit();
+                } catch (error) {
+                    if (error.code === 'permission-denied') {
+                        throw new Error('Kayıtlı işlem yazma izni reddedildi. Firestore kurallarında recurringTransactions yazma izni gerekli.');
+                    }
+                    throw error;
+                }
+                if (recurringRef) {
+                    const recurringData = {
+                        id: recurringRef.id,
+                        type: selectedType,
+                        amount,
+                        category: transactionData.category,
+                        description: transactionData.description,
+                        accountId,
+                        accountName: account.name,
+                        accountCurrency: account.currency,
+                        purchaseRate,
+                        frequency,
+                        nextDate: oldRecurring?.nextDate || getNextRecurringDate(transactionDate, frequency),
+                        endDate,
+                        active: true,
+                        isInstallment,
+                        installmentCount,
+                        installmentInterestRate,
+                        installmentInterestAmount,
+                        installmentTotal,
+                        installmentAmount
+                    };
+                    recurringTransactions = recurringTransactions.filter(item => item.id !== recurringRef.id);
+                    recurringTransactions.push(recurringData);
+                } else if (oldRecurring) {
+                    recurringTransactions = recurringTransactions.map(item => item.id === oldRecurring.id ? { ...item, active: false } : item);
+                }
+                editingTransactionId = null;
+                document.getElementById('transactionForm').reset();
+                document.getElementById('date').value = new Date().toISOString().split('T')[0];
+                document.getElementById('recurringOptions').hidden = true;
+                document.getElementById('installmentOptions').hidden = true;
+                document.getElementById('creditInstallmentDetails').hidden = true;
+                document.getElementById('transactionSubmitBtn').innerHTML = '<i class="fas fa-save"></i> Kaydet';
+                showToast('İşlem güncellendi!', 'success');
+                await loadUserData();
+                return;
+            }
+            const transactionRef = db.collection('users').doc(currentUser.uid).collection('transactions').doc();
+            await transactionRef.set({
+                type: selectedType,
+                amount,
+                category: document.getElementById('category').value,
+                description: document.getElementById('description').value || 'Açıklama yok',
+                date: document.getElementById('date').value,
+                accountId,
+                accountName: account?.name || 'Bilinmeyen',
+                accountCurrency: account?.currency || 'TRY',
+                accountOpeningRate: getAccountOpeningRate(account),
+                accountOpeningRateDate: account?.openingRateDate || null,
+                purchaseRate,
+                transactionRate,
+                transactionRateDate: new Date().toISOString(),
+                profitLoss,
+                isInstallment,
+                installmentCount,
+                installmentInterestRate,
+                installmentInterestAmount,
+                installmentTotal,
+                installmentAmount,
+                receiptBase64: receiptBase64 || null,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                isRecurringSource: isRecurring
+            });
+            if (account) {
+                const balanceAmount = isInstallment && selectedType === 'expense' ? installmentTotal : amount;
+                const newBalance = selectedType === 'income' ? account.balance + balanceAmount : account.balance - balanceAmount;
+                const updates = { balance: newBalance };
+                if (isInvestment) {
+                    updates.quantity = newBalance;
+                    if (selectedType === 'income') {
+                        const oldQuantity = Number(account.quantity ?? account.balance ?? 0);
+                        const oldRate = getAccountOpeningRate(account);
+                        updates.buyPrice = oldQuantity > 0
+                            ? ((oldQuantity * oldRate) + (amount * purchaseRate)) / newBalance
+                            : purchaseRate;
+                        updates.openingRate = updates.buyPrice;
+                    }
+                }
+                await db.collection('users').doc(currentUser.uid).collection('accounts').doc(accountId).update(updates);
+            }
+            if (isRecurring) {
+                const recurringData = {
+                    type: selectedType,
+                    amount,
+                    category: document.getElementById('category').value,
+                    description: document.getElementById('description').value || 'Tekrarlayan işlem',
+                    accountId,
+                    accountName: account.name,
+                    accountCurrency: account.currency,
+                    purchaseRate,
+                    frequency,
+                    nextDate: getNextRecurringDate(transactionDate, frequency),
+                    endDate,
+                    active: true,
+                    isInstallment,
+                    installmentCount,
+                    installmentInterestRate,
+                    installmentInterestAmount,
+                    installmentTotal,
+                    installmentAmount,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                const recurringRef = db.collection('users').doc(currentUser.uid).collection('recurringTransactions').doc();
+                try {
+                    await recurringRef.set(recurringData);
+                    await transactionRef.update({ recurringId: recurringRef.id, isRecurringSource: true });
+                } catch (error) {
+                    if (error.code === 'permission-denied') {
+                        throw new Error('İşlem kaydedildi ancak kayıtlı işlemler için Firestore yazma izni yok.');
+                    }
+                    throw error;
+                }
+                recurringTransactions.push({ id: recurringRef.id, ...recurringData, createdAt: new Date().toISOString() });
+                updateRecurringTransactionsUI();
+            }
+            document.getElementById('transactionForm').reset();
+            document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('recurringOptions').hidden = true;
+            document.getElementById('installmentOptions').hidden = true;
+            document.getElementById('creditInstallmentDetails').hidden = true;
+            document.getElementById('creditCardDetails').hidden = true;
+            updateTransactionPurchaseFields();
+            document.getElementById('receiptPreview').innerHTML = '';
+            receiptBase64 = null;
+            showToast('İşlem kaydedildi!', 'success');
+            await loadUserData();
+        } catch (error) { showToast('İşlem hatası: ' + error.message, 'error'); }
+    });
+
+    // Transfer formu - kredi kartına ödemeyi masraf olarak ekle
+    document.getElementById('transferForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+        const fromAccountId = document.getElementById('fromAccount').value;
+        const toAccountId = document.getElementById('toAccount').value;
+        const amount = parseFloat(document.getElementById('transferAmount').value);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            showToast('Transfer tutarı sıfırdan büyük olmalı.', 'error');
+            return;
+        }
+        if (fromAccountId === toAccountId) { showToast('Kaynak ve hedef hesap aynı olamaz!', 'error'); return; }
+        const fromAccount = accounts.find(a => a.id === fromAccountId);
+        const toAccount = accounts.find(a => a.id === toAccountId);
+        if (!fromAccount || !toAccount) { showToast('Hesaplar bulunamadı!', 'error'); return; }
+        if (Number(fromAccount.balance || 0) < amount) { showToast('Yetersiz bakiye!', 'error'); return; }
+        const isCreditCard = toAccount.type === 'credit' || toAccount.name.toLowerCase().includes('kredi');
+        console.log('Kredi kartı mı?', isCreditCard);
+        try {
+            const batch = db.batch();
+            const transferRef = db.collection('users').doc(currentUser.uid).collection('transfers').doc();
+            batch.set(transferRef, {
+                fromAccountId,
+                fromAccountName: fromAccount.name,
+                toAccountId,
+                toAccountName: toAccount.name,
+                toAccountType: toAccount.type,
+                amount,
+                description: document.getElementById('transferDescription').value || 'Hesap Transferi',
+                date: document.getElementById('transferDate').value,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(fromAccountId), { balance: Number(fromAccount.balance || 0) - amount });
+            batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(toAccountId), { balance: Number(toAccount.balance || 0) + amount });
+            if (isCreditCard) {
+                const paymentRef = db.collection('users').doc(currentUser.uid).collection('transactions').doc();
+                batch.set(paymentRef, {
+                    type: 'expense',
+                    amount: amount,
+                    category: '💳 Kredi Kartı Ödemesi',
+                    description: `${fromAccount.name} → ${toAccount.name}`,
+                    date: document.getElementById('transferDate').value,
+                    accountId: fromAccountId,
+                    accountName: fromAccount.name,
+                    accountCurrency: fromAccount.currency || 'TRY',
+                    transferId: transferRef.id,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
+            await batch.commit();
+            document.getElementById('transferForm').reset();
+            document.getElementById('transferDate').value = new Date().toISOString().split('T')[0];
+            showToast('Transfer başarılı!', 'success');
+            await loadUserData();
+        } catch (error) { showToast('Transfer hatası: ' + error.message, 'error'); }
+    });
+
+    // Filtreler
+    document.getElementById('filterType').addEventListener('change', updateTransactionsUI);
+    document.getElementById('filterAccount').addEventListener('change', updateTransactionsUI);
+
+    // Para birimi
+    document.getElementById('currencySetting').addEventListener('change', async (e) => {
+        currentCurrency = e.target.value;
+        await saveSettings();
+        showToast('Para birimi güncellendi!', 'success');
+    });
+
+    // Yeni ay başlat
+    document.getElementById('startNewMonth').addEventListener('click', async () => {
+        if (!confirm('Yeni ay başlatılacak. Emin misiniz?')) return;
+        const now = new Date();
+        currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        document.getElementById('currentMonthDisplay').textContent = formatMonth(currentMonth);
+        await saveSettings();
+        updateDashboard();
+        showToast('Yeni ay başlatıldı!', 'success');
+    });
+
+    // Dışa aktar, içe aktar, sil
+    document.getElementById('exportData').addEventListener('click', exportData);
+    document.getElementById('importData').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        document.getElementById('importFileName').textContent = file ? file.name : 'Henüz dosya seçilmedi';
+        importData(file);
+    });
+    document.getElementById('clearData').addEventListener('click', clearAllData);
+    document.getElementById('saveRateAlerts').addEventListener('click', () => {
+        if (!currentUser) return;
+        const settings = loadRateAlertSettings();
+        let invalidLimit = false;
+        rateAlertCurrencies.forEach(currency => {
+            const lowerValue = document.getElementById(`alertLower${currency}`).value.trim();
+            const upperValue = document.getElementById(`alertUpper${currency}`).value.trim();
+            const lower = lowerValue === '' ? null : Number(lowerValue);
+            const upper = upperValue === '' ? null : Number(upperValue);
+            if ((lower !== null && (!Number.isFinite(lower) || lower < 0)) || (upper !== null && (!Number.isFinite(upper) || upper < 0)) || (lower !== null && upper !== null && lower >= upper)) {
+                invalidLimit = true;
+                return;
+            }
+            settings.limits[currency] = { lower, upper };
+            settings.states[currency] = 'normal';
+        });
+        if (invalidLimit) {
+            showToast('Kur limitleri geçerli ve sıfırdan büyük olmalı.', 'error');
+            return;
+        }
+        settings.frequencyHours = Number(document.getElementById('rateAlertFrequency').value) || 6;
+        saveRateAlertSettings(settings);
+        showToast('Kur bildirimleri kaydedildi.', 'success');
+        checkRateAlerts();
+    });
+    document.getElementById('saveSecurityPin').addEventListener('click', async () => {
+        const input = document.getElementById('securityPin');
+        const pin = input.value.trim();
+        if (!/^\d{4,8}$/.test(pin)) {
+            showToast('PIN 4-8 haneli rakamlardan oluşmalı.', 'error');
+            return;
+        }
+        localStorage.setItem(securityStorageKey('pin'), await hashSecurityPin(pin));
+        input.value = '';
+        await configureSecurityUI();
+        showToast('Uygulama PIN kilidi etkinleştirildi.', 'success');
+    });
+    document.getElementById('removeSecurityPin').addEventListener('click', () => {
+        if (!hasSecurityPin()) {
+            showToast('Kayıtlı bir PIN bulunmuyor.', 'error');
+            return;
+        }
+        localStorage.removeItem(securityStorageKey('pin'));
+        localStorage.removeItem(securityStorageKey('locked'));
+        securityLocked = false;
+        if (securityTimeoutId) clearTimeout(securityTimeoutId);
+        showToast('PIN kilidi kaldırıldı.', 'success');
+    });
+    document.getElementById('securityTimeout').addEventListener('change', (event) => {
+        localStorage.setItem(securityStorageKey('timeout'), String(Number(event.target.value) || 0));
+        scheduleSecurityLock();
+        showToast('Otomatik kilit ayarı güncellendi.', 'success');
+    });
+    document.getElementById('lockNow').addEventListener('click', () => {
+        if (!hasSecurityPin()) {
+            showToast('Önce bir PIN kaydetmelisiniz.', 'error');
+            return;
+        }
+        lockSecurityApp();
+    });
+    document.getElementById('unlockForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = document.getElementById('unlockPin');
+        const error = document.getElementById('unlockError');
+        const expected = localStorage.getItem(securityStorageKey('pin'));
+        if (expected && await hashSecurityPin(input.value.trim()) === expected) {
+            unlockSecurityApp();
+            return;
+        }
+        input.value = '';
+        error.textContent = 'PIN kodu hatalı.';
+        input.focus();
+    });
+
+    // Hedefler
+    document.getElementById('addGoalBtn').addEventListener('click', () => {
+        updateGoalAccountSelect();
+        document.getElementById('addGoalModal').style.display = 'flex';
+    });
+    document.getElementById('cancelGoal').addEventListener('click', () => { document.getElementById('addGoalModal').style.display = 'none'; });
+    document.getElementById('goalForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+        try {
+            await db.collection('users').doc(currentUser.uid).collection('goals').add({
+                name: document.getElementById('goalName').value,
+                amount: parseFloat(document.getElementById('goalAmount').value),
+                current: parseFloat(document.getElementById('goalCurrent').value) || 0,
+                accountId: document.getElementById('goalAccount').value || null,
+                accountName: accounts.find(account => account.id === document.getElementById('goalAccount').value)?.name || null,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            document.getElementById('goalForm').reset();
+            document.getElementById('addGoalModal').style.display = 'none';
+            showToast('Hedef eklendi!', 'success');
+            await loadUserData();
+        } catch (error) { showToast('Hedef eklenirken hata: ' + error.message, 'error'); }
+    });
+
+    // Tema renkleri
+    document.querySelectorAll('.theme-swatch').forEach(swatch => swatch.addEventListener('click', async () => {
+        applyThemeColor(swatch.dataset.colorValue);
+        await saveSettings();
+        showToast('Renk teması güncellendi!', 'success');
+    }));
+    document.getElementById('applyRgbColor').addEventListener('click', async () => {
+        const values = ['themeRed', 'themeGreen', 'themeBlue'].map(id => Number(document.getElementById(id).value));
+        if (values.some(value => !Number.isInteger(value) || value < 0 || value > 255)) {
+            showToast('RGB değerleri 0 ile 255 arasında olmalı.', 'error');
+            return;
+        }
+        const hexColor = `#${values.map(value => value.toString(16).padStart(2, '0')).join('')}`;
+        applyThemeColor(hexColor);
+        await saveSettings();
+        showToast('Özel RGB teması uygulandı!', 'success');
+    });
+
+    // Tarihleri ayarla
+    document.getElementById('date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('transferDate').value = new Date().toISOString().split('T')[0];
+
+    // Tema
+    const savedTheme = localStorage.getItem('theme-v2') || 'light';
+    document.body.setAttribute('data-theme', savedTheme);
+    document.querySelector('#themeBtn i').className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+
+    // Kurları göster
+    updateExchangeRatesDisplay();
+    document.getElementById('currentMonthDisplay').textContent = formatMonth(currentMonth);
+    
+    console.log('✅ Uygulama hazır');
+});
