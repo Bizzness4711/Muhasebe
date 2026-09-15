@@ -17,6 +17,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-messaging-compat.js"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- SheetJS (Excel okuma/yazma) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
     <!-- Login Modal -->
@@ -251,6 +253,14 @@
                         </select>
                         <select id="filterAccount" class="filter-select"><option value="all">Tüm Hesaplar</option></select>
                     </div>
+                </div>
+                <div class="admin-toolbar">
+                    <button id="exportCsvBtn" class="admin-mini-btn" type="button"><i class="fas fa-file-csv"></i> CSV indir</button>
+                    <button id="exportXlsxBtn" class="admin-mini-btn" type="button"><i class="fas fa-file-excel"></i> Excel indir</button>
+                    <button id="importTemplateBtn" class="admin-mini-btn" type="button"><i class="fas fa-table"></i> Şablon indir</button>
+                    <label for="importTableFile" class="admin-mini-btn" style="cursor:pointer;"><i class="fas fa-upload"></i> CSV/Excel yükle</label>
+                    <input type="file" id="importTableFile" accept=".csv,.xlsx,.xls" hidden>
+                    <small id="tablexferStatus" class="hint-text"></small>
                 </div>
                 <div id="allTransactionsList" class="transactions-modern"></div>
                 <div class="recurring-panel">
@@ -702,6 +712,7 @@
 
     <script src="js/core.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/tablexfer.js"></script>
     <script src="js/push.js"></script>
     <script src="js/admin.js"></script>
 </body>
