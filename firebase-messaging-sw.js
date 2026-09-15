@@ -16,7 +16,7 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
     const title = (payload && payload.notification && payload.notification.title) || 'Finora';
     const body = (payload && payload.notification && payload.notification.body) || 'Yeni bildiriminiz var.';
-    self.registration.showNotification(title, { body, icon: 'icons/logo.svg', badge: 'icons/logo.svg', tag: 'finora' });
+    self.registration.showNotification(title, { body, icon: 'icons/logo-192.png', badge: 'icons/logo-192.png', tag: 'finora' });
 });
 
 self.addEventListener('notificationclick', (event) => {

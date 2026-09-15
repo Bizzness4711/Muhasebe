@@ -132,7 +132,7 @@ function addNotification(id, message, icon = 'fa-bell', title = 'Finora') {
     updateNotificationsUI();
     playNotificationSound();
     if ('Notification' in window && Notification.permission === 'granted') {
-        try { new Notification(title, { body: message, icon: 'icons/logo.svg' }); } catch (e) { console.warn('Masaüstü bildirimi gösterilemedi.', e); }
+        try { new Notification(title, { body: message, icon: 'icons/logo-192.png' }); } catch (e) { console.warn('Masaüstü bildirimi gösterilemedi.', e); }
     }
 }
 
@@ -144,9 +144,22 @@ function updateNotificationsUI() {
     count.textContent = unread.length > 99 ? '99+' : String(unread.length);
     count.hidden = unread.length === 0;
     list.innerHTML = notifications.length
-        ? notifications.slice(0, 12).map(item => `<div class="notification-item"><i class="fas ${escapeHtml(item.icon)}"></i><span><strong>${escapeHtml(item.title || 'Finora')}</strong> · ${escapeHtml(item.message)}</span></div>`).join('')
+        ? notifications.slice(0, 12).map(item => `<div class="notification-item"><i class="fas ${escapeHtml(item.icon)}"></i><span><strong>${escapeHtml(item.title || 'Finora')}</strong> · ${escapeHtml(item.message)}</span><button class="delete-btn" onclick="deleteNotification('${item.id}')" title="Bildirimi sil"><i class="fas fa-times"></i></button></div>`).join('')
         : '<div class="notification-empty">Yeni bildiriminiz yok.</div>';
 }
+
+window.deleteNotification = function (id) {
+    notifications = notifications.filter(item => item.id !== id);
+    saveNotifications();
+    updateNotificationsUI();
+};
+
+window.clearAllNotifications = function () {
+    if (!notifications.length || !confirm('Tüm bildirimler silinsin mi?')) return;
+    notifications = [];
+    saveNotifications();
+    updateNotificationsUI();
+};
 
 async function requestNotificationPermission() {
     if (!('Notification' in window)) {

@@ -180,6 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         saveNotifications();
         updateNotificationsUI();
     });
+    document.getElementById('clearAllNotificationsBtn')?.addEventListener('click', () => window.clearAllNotifications());
     const enableBtn = document.getElementById('enableNotificationsBtn');
     if (enableBtn) enableBtn.addEventListener('click', requestNotificationPermission);
     const enableSettingBtn = document.getElementById('enableNotificationsSettingBtn');
