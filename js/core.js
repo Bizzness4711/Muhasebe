@@ -24,20 +24,22 @@ let currentCurrency = 'TRY';
 let selectedAccounts = new Set();
 let currentMonth = new Date().toISOString().substring(0, 7);
 let reportPeriod = 'month';
-let currentThemeColor = 'green';
+let currentThemeColor = '#9C27B0';
 let exchangeRates = { TRY: 1, USD: 0, EUR: 0, GRAM_ALTIN: 0, CEYREK_ALTIN: 0 };
-let recognition = null;
-let receiptBase64 = null;
 let isHidden = false;
 let totalBalanceVisible = false;
 let privacyModeUnsubscribe = null;
-let notifications = [];
 let securityTimeoutId = null;
 let securityLocked = false;
 let securityActivityBound = false;
 let rateRefreshIntervalId = null;
 let editingTransactionId = null;
 let recurringProcessingPromise = null;
+let notifications = [];
+let budgets = [];
+let isAdmin = false;
+let userRole = 'user';
+const APP_VERSION = 'v2026.09';
 
 auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
 
@@ -62,13 +64,7 @@ function showToast(message, type = 'success') {
     setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
 }
 
-// Firestore'dan gelen kullanıcı metinlerini HTML içine yazmadan önce güvenli hale getir.
-function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, character => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[character]));
-}
-
+// Bildirimler: kullanıcı bazlı localStorage'da saklanır (en fazla 40 adet).
 function notificationStorageKey() {
     return currentUser ? `notifications-${currentUser.uid}` : 'notifications';
 }
@@ -84,7 +80,187 @@ function loadNotifications() {
 }
 
 function saveNotifications() {
-    localStorage.setItem(notificationStorageKey(), JSON.stringify(notifications.slice(0, 40)));
+    try {
+        localStorage.setItem(notificationStorageKey(), JSON.stringify(notifications.slice(0, 40)));
+    } catch (error) {
+        console.warn('Bildirimler yazılamadı.', error);
+    }
+}
+
+// Bildirim sesi: Web Audio ile kısa bip. Tarayıcılar ses için kullanıcı etkileşimi
+// ister, ilk tıklamada context açılır (main.js içinde unlock edilir).
+let notifAudioCtx = null;
+
+function unlockNotifAudio() {
+    try {
+        if (!notifAudioCtx) notifAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (notifAudioCtx.state === 'suspended') notifAudioCtx.resume();
+    } catch (e) { /* sessiz geç */ }
+}
+
+function isNotifSoundOn() {
+    if (!currentUser) return true;
+    return localStorage.getItem(`notif-sound-${currentUser.uid}`) !== 'off';
+}
+
+function playNotificationSound() {
+    try {
+        if (!isNotifSoundOn()) return;
+        unlockNotifAudio();
+        if (!notifAudioCtx) return;
+        const now = notifAudioCtx.currentTime;
+        const osc = notifAudioCtx.createOscillator();
+        const gain = notifAudioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(notifAudioCtx.destination);
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(0.3, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+        osc.start(now);
+        osc.stop(now + 0.5);
+    } catch (e) {
+        console.warn('Bildirim sesi çalınamadı.', e);
+    }
+}
+
+function addNotification(id, message, icon = 'fa-bell') {
+    if (notifications.some(item => item.id === id)) return;
+    notifications.unshift({ id, message, icon, read: false, createdAt: new Date().toISOString() });
+    saveNotifications();
+    updateNotificationsUI();
+    playNotificationSound();
+    if ('Notification' in window && Notification.permission === 'granted') {
+        try { new Notification('Finora', { body: message }); } catch (e) { console.warn('Masaüstü bildirimi gösterilemedi.', e); }
+    }
+}
+
+function updateNotificationsUI() {
+    const list = document.getElementById('notificationList');
+    const count = document.getElementById('notificationCount');
+    if (!list || !count) return;
+    const unread = notifications.filter(item => !item.read);
+    count.textContent = unread.length > 99 ? '99+' : String(unread.length);
+    count.hidden = unread.length === 0;
+    list.innerHTML = notifications.length
+        ? notifications.slice(0, 12).map(item => `<div class="notification-item"><i class="fas ${escapeHtml(item.icon)}"></i><span>${escapeHtml(item.message)}</span></div>`).join('')
+        : '<div class="notification-empty">Yeni bildiriminiz yok.</div>';
+}
+
+async function requestNotificationPermission() {
+    if (!('Notification' in window)) {
+        showToast('Bu tarayıcı masaüstü bildirimlerini desteklemiyor.', 'error');
+        return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted' && typeof initPush === 'function') initPush();
+    showToast(permission === 'granted' ? 'Masaüstü bildirimleri açıldı.' : 'Bildirim izni verilmedi.', permission === 'granted' ? 'success' : 'error');
+}
+
+// Otomatik kontroller: bugünkü tekrarlayan işlemler + hedef kilometre taşları + bütçe uyarıları.
+// (Piyasa hareketi bildirimi bilinçli olarak yok: her açılışta gürültü yapıyordu.)
+function checkNotifications() {
+    if (!currentUser) return;
+    const today = new Date().toISOString().split('T')[0];
+    transactions.filter(item => item.recurringId && item.date === today).forEach(item => {
+        addNotification(`recurring-${item.id}`, `Tekrarlayan işlem oluşturuldu: ${item.description}.`, 'fa-rotate');
+    });
+
+    goals.forEach(goal => {
+        const progress = goal.amount > 0 ? (goal.current / goal.amount) * 100 : 0;
+        const milestone = progress >= 100 ? 100 : progress >= 75 ? 75 : progress >= 50 ? 50 : progress >= 25 ? 25 : 0;
+        if (milestone > 0) addNotification(`goal-${goal.id}-${milestone}`, `${goal.name} hedefiniz %${milestone} seviyesine ulaştı${milestone === 100 ? '!' : '.'}`, 'fa-bullseye');
+    });
+
+    budgets.filter(b => b.month === currentMonth).forEach(budget => {
+        const spent = getBudgetSpent(budget.category, budget.month);
+        const limit = Number(budget.limit) || 0;
+        if (!(limit > 0)) return;
+        const pct = (spent / limit) * 100;
+        if (pct >= 100) addNotification(`budget-${budget.month}-${budget.category}-over`, `${budget.category} bütçesi aşıldı: ₺${spent.toFixed(2)} / ₺${limit.toFixed(2)}.`, 'fa-triangle-exclamation');
+        else if (pct >= 80) addNotification(`budget-${budget.month}-${budget.category}-warn`, `${budget.category} bütçesinin %${pct.toFixed(0)} kullanıldı.`, 'fa-wallet');
+    });
+}
+
+// Bütçeler
+async function loadBudgets() {
+    if (!currentUser) { budgets = []; return; }
+    try {
+        const snap = await db.collection('users').doc(currentUser.uid).collection('budgets').get();
+        budgets = [];
+        snap.forEach(doc => budgets.push({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+        if (error.code === 'permission-denied') console.warn('Bütçeler için Firestore kuralı eksik.', error);
+        else console.warn('Bütçeler yüklenemedi.', error);
+        budgets = [];
+    }
+}
+
+function getBudgetSpent(category, month) {
+    return transactions
+        .filter(t => t.type === 'expense' && t.category === category && String(t.date || '').startsWith(month))
+        .reduce((sum, t) => sum + getTransactionValueTL(t), 0);
+}
+
+function updateBudgetsUI() {
+    const list = document.getElementById('budgetsList');
+    const monthBudgets = budgets.filter(b => b.month === currentMonth);
+    if (list) {
+        if (!monthBudgets.length) {
+            list.innerHTML = '<p class="empty-state">Bu aya ait bütçe yok. Yukarıdan ekleyin.</p>';
+        } else {
+            list.innerHTML = monthBudgets.map(b => {
+                const limit = Number(b.limit) || 0;
+                const spent = getBudgetSpent(b.category, b.month);
+                const pct = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;
+                const barClass = spent >= limit ? 'over' : (spent / limit) >= 0.8 ? 'warn' : '';
+                const hidden = isHidden ? '₺••••••' : `₺${spent.toFixed(2)} / ₺${limit.toFixed(2)}`;
+                return `<div class="budget-card">
+                    <div class="budget-card-header"><strong>${escapeHtml(b.category)}</strong>
+                    <button class="delete-btn" onclick="deleteBudget('${b.id}')" title="Bütçeyi sil"><i class="fas fa-trash"></i></button></div>
+                    <div class="goal-progress-bar"><div class="goal-progress-fill budget-fill ${barClass}" style="width:${pct.toFixed(1)}%"></div></div>
+                    <div class="goal-amounts"><span>${hidden}</span><span>%${(limit > 0 ? (spent / limit) * 100 : 0).toFixed(0)}</span></div>
+                </div>`;
+            }).join('');
+        }
+    }
+    const overview = document.getElementById('budgetOverview');
+    const overviewCard = document.getElementById('budgetOverviewCard');
+    if (overview && overviewCard) {
+        const ranked = monthBudgets
+            .map(b => ({ ...b, pct: (Number(b.limit) > 0 ? getBudgetSpent(b.category, b.month) / Number(b.limit) : 0) }))
+            .sort((a, b) => b.pct - a.pct)
+            .slice(0, 5);
+        if (!ranked.length) {
+            overviewCard.style.display = 'none';
+        } else {
+            overviewCard.style.display = 'block';
+            overview.innerHTML = ranked.map(b => {
+                const barClass = b.pct >= 1 ? 'over' : b.pct >= 0.8 ? 'warn' : '';
+                return `<div class="budget-row"><span>${escapeHtml(b.category)}</span>
+                    <div class="goal-progress-bar budget-mini-bar"><div class="goal-progress-fill budget-fill ${barClass}" style="width:${Math.min(100, b.pct * 100).toFixed(1)}%"></div></div>
+                    <strong>%${(b.pct * 100).toFixed(0)}</strong></div>`;
+            }).join('');
+        }
+    }
+}
+
+window.deleteBudget = async function (id) {
+    if (!currentUser || !confirm('Bu bütçe silinsin mi?')) return;
+    try {
+        await db.collection('users').doc(currentUser.uid).collection('budgets').doc(id).delete();
+        showToast('Bütçe silindi.', 'success');
+        await loadBudgets();
+        updateBudgetsUI();
+    } catch (error) { showToast('Bütçe silinemedi: ' + error.message, 'error'); }
+};
+
+// Firestore'dan gelen kullanıcı metinlerini HTML içine yazmadan önce güvenli hale getir.
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[character]));
 }
 
 function securityStorageKey(suffix) {
@@ -157,104 +333,6 @@ async function configureSecurityUI() {
     }
 }
 
-function addNotification(id, message, icon = 'fa-bell') {
-    if (notifications.some(item => item.id === id)) return;
-    notifications.unshift({ id, message, icon, read: false, createdAt: new Date().toISOString() });
-    saveNotifications();
-    if ('Notification' in window && Notification.permission === 'granted') new Notification('Finora', { body: message });
-}
-
-function updateNotificationsUI() {
-    const list = document.getElementById('notificationList');
-    const count = document.getElementById('notificationCount');
-    if (!list || !count) return;
-    const unread = notifications.filter(item => !item.read);
-    count.textContent = unread.length > 99 ? '99+' : String(unread.length);
-    count.hidden = unread.length === 0;
-    list.innerHTML = notifications.length
-        ? notifications.slice(0, 12).map(item => `<div class="notification-item"><i class="fas ${escapeHtml(item.icon)}"></i><span>${escapeHtml(item.message)}</span></div>`).join('')
-        : '<div class="notification-empty">Yeni bildiriminiz yok.</div>';
-}
-
-const rateAlertCurrencies = ['USD', 'EUR', 'GRAM_ALTIN', 'CEYREK_ALTIN'];
-const rateAlertLabels = { USD: 'Dolar', EUR: 'Euro', GRAM_ALTIN: 'Gram altın', CEYREK_ALTIN: 'Çeyrek altın' };
-
-function rateAlertStorageKey() {
-    return currentUser ? `rate-alerts-${currentUser.uid}` : null;
-}
-
-function defaultRateAlertSettings() {
-    return { frequencyHours: 6, limits: {}, states: {}, lastCurrentNotification: {} };
-}
-
-function loadRateAlertSettings() {
-    const key = rateAlertStorageKey();
-    if (!key) return defaultRateAlertSettings();
-    try {
-        const parsed = JSON.parse(localStorage.getItem(key) || '{}');
-        const settings = { ...defaultRateAlertSettings(), ...parsed };
-        settings.limits = settings.limits && typeof settings.limits === 'object' ? settings.limits : {};
-        settings.states = settings.states && typeof settings.states === 'object' ? settings.states : {};
-        settings.lastCurrentNotification = settings.lastCurrentNotification && typeof settings.lastCurrentNotification === 'object' ? settings.lastCurrentNotification : {};
-        return settings;
-    } catch (error) {
-        console.warn('Kur bildirim ayarları okunamadı.', error);
-        return defaultRateAlertSettings();
-    }
-}
-
-function saveRateAlertSettings(settings) {
-    const key = rateAlertStorageKey();
-    if (key) localStorage.setItem(key, JSON.stringify(settings));
-}
-
-function updateRateAlertInputs() {
-    const settings = loadRateAlertSettings();
-    rateAlertCurrencies.forEach(currency => {
-        const limits = settings.limits[currency] || {};
-        const lower = document.getElementById(`alertLower${currency}`);
-        const upper = document.getElementById(`alertUpper${currency}`);
-        if (lower) lower.value = limits.lower ?? '';
-        if (upper) upper.value = limits.upper ?? '';
-    });
-    const frequency = document.getElementById('rateAlertFrequency');
-    if (frequency) frequency.value = String(settings.frequencyHours || 6);
-}
-
-function checkRateAlerts() {
-    if (!currentUser) return;
-    const settings = loadRateAlertSettings();
-    const now = Date.now();
-    rateAlertCurrencies.forEach(currency => {
-        const rate = Number(exchangeRates[currency]);
-        if (!(rate > 0)) return;
-        const limits = settings.limits[currency] || {};
-        const lower = Number(limits.lower);
-        const upper = Number(limits.upper);
-        const hasLower = Number.isFinite(lower) && lower > 0;
-        const hasUpper = Number.isFinite(upper) && upper > 0;
-        let state = 'normal';
-        if (hasLower && rate < lower) state = 'below';
-        else if (hasUpper && rate > upper) state = 'above';
-
-        if (state !== 'normal' && settings.states[currency] !== state) {
-            const direction = state === 'below' ? 'alt limitin altında' : 'üst limitin üstünde';
-            addNotification(`rate-limit-${currency}-${state}-${now}`, `${rateAlertLabels[currency]} kuru ₺${rate.toFixed(2)} ile ${direction}.`, state === 'below' ? 'fa-arrow-trend-down' : 'fa-arrow-trend-up');
-        }
-        settings.states[currency] = state;
-
-        if (!hasLower && !hasUpper) {
-            const frequencyMs = Math.max(1, Number(settings.frequencyHours) || 6) * 60 * 60 * 1000;
-            const lastNotification = Number(settings.lastCurrentNotification[currency]) || 0;
-            if (now - lastNotification >= frequencyMs) {
-                addNotification(`rate-current-${currency}-${Math.floor(now / frequencyMs)}`, `${rateAlertLabels[currency]} güncel kuru: ₺${rate.toFixed(2)}.`, 'fa-chart-line');
-                settings.lastCurrentNotification[currency] = now;
-            }
-        }
-    });
-    saveRateAlertSettings(settings);
-}
-
 function scheduleRateRefresh() {
     if (rateRefreshIntervalId) clearInterval(rateRefreshIntervalId);
     if (!currentUser) return;
@@ -263,44 +341,9 @@ function scheduleRateRefresh() {
     }, 60 * 60 * 1000);
 }
 
-async function requestNotificationPermission() {
-    if (!('Notification' in window)) {
-        showToast('Bu tarayıcı masaüstü bildirimlerini desteklemiyor.', 'error');
-        return;
-    }
-    const permission = await Notification.requestPermission();
-    showToast(permission === 'granted' ? 'Masaüstü bildirimleri açıldı.' : 'Bildirim izni verilmedi.', permission === 'granted' ? 'success' : 'error');
-}
 
-function checkNotifications() {
-    const today = new Date().toISOString().split('T')[0];
-    transactions.filter(item => item.recurringId && item.date === today).forEach(item => {
-        addNotification(`recurring-${item.id}`, `Tekrarlayan işlem oluşturuldu: ${item.description}.`, 'fa-rotate');
-    });
-
-    goals.forEach(goal => {
-        const progress = goal.amount > 0 ? (goal.current / goal.amount) * 100 : 0;
-        const milestone = progress >= 100 ? 100 : progress >= 75 ? 75 : progress >= 50 ? 50 : progress >= 25 ? 25 : 0;
-        if (milestone > 0) addNotification(`goal-${goal.id}-${milestone}`, `${goal.name} hedefiniz %${milestone} seviyesine ulaştı${milestone === 100 ? '!' : '.'}`, 'fa-bullseye');
-    });
-
-    investmentCurrencies.forEach(currency => {
-        const accountsForCurrency = accounts.filter(account => account.currency === currency);
-        const total = accountsForCurrency.reduce((sum, account) => sum + getInvestmentMetrics(account).profitLoss, 0);
-        const direction = total >= 0 ? 'kâr' : 'zarar';
-        const rounded = Math.round(Math.abs(total));
-        if (rounded > 0) addNotification(`market-${currency}-${direction}-${rounded}`, `${currency} varlığınızda yaklaşık ₺${rounded} ${direction} oluştu.`, total >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down');
-    });
-}
-
-function applyThemeColor(color) {
-    const colors = {
-        green: { primary: '#4CAF50', dark: '#45a049' },
-        blue: { primary: '#2196F3', dark: '#1976D2' },
-        purple: { primary: '#9C27B0', dark: '#7B1FA2' },
-        orange: { primary: '#FF9800', dark: '#F57C00' }
-    };
-    const hexColor = colors[color]?.primary || (/^#[0-9a-f]{6}$/i.test(color) ? color : colors.green.primary);
+function applyThemeColor() {
+    const hexColor = '#9C27B0';
     const rgb = hexToRgb(hexColor);
     currentThemeColor = hexColor;
 
@@ -308,19 +351,8 @@ function applyThemeColor(color) {
     document.documentElement.style.setProperty('--primary-dark', `rgb(${Math.round(rgb.r * 0.8)}, ${Math.round(rgb.g * 0.8)}, ${Math.round(rgb.b * 0.8)})`);
     document.documentElement.style.setProperty('--primary-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
 
-    const picker = document.getElementById('themeColorPicker');
-    const colorValue = document.getElementById('themeColorValue');
-    if (colorValue) colorValue.textContent = `RGB(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-    ['themeRed', 'themeGreen', 'themeBlue'].forEach((id, index) => {
-        const input = document.getElementById(id);
-        if (input) input.value = [rgb.r, rgb.g, rgb.b][index];
-    });
-    if (picker) picker.querySelectorAll('.theme-swatch').forEach(swatch => {
-        swatch.classList.toggle('active', swatch.dataset.colorValue.toLowerCase() === hexColor.toLowerCase());
-    });
-
     document.querySelectorAll('.color-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.color === color);
+        btn.classList.remove('active');
     });
 }
 
@@ -329,44 +361,188 @@ function hexToRgb(hex) {
     return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
 }
 
+const RATES_CACHE_KEY = 'finance-rates-cache-v1';
+let ratesStatus = 'unknown';
+
+function loadRatesFromCache() {
+    try {
+        const raw = localStorage.getItem(RATES_CACHE_KEY);
+        if (!raw) return false;
+        const cached = JSON.parse(raw);
+        if (!cached) return false;
+        ['USD', 'EUR', 'GRAM_ALTIN', 'CEYREK_ALTIN'].forEach(key => {
+            const value = Number(cached[key]);
+            if (value > 0) exchangeRates[key] = value;
+        });
+        ratesStatus = 'cache';
+        return true;
+    } catch (e) {
+        console.warn('Kur önbelleği okunamadı.', e);
+        return false;
+    }
+}
+
+function saveRatesToCache() {
+    try {
+        localStorage.setItem(RATES_CACHE_KEY, JSON.stringify({
+            USD: exchangeRates.USD,
+            EUR: exchangeRates.EUR,
+            GRAM_ALTIN: exchangeRates.GRAM_ALTIN,
+            CEYREK_ALTIN: exchangeRates.CEYREK_ALTIN,
+            ts: Date.now()
+        }));
+    } catch (e) {
+        console.warn('Kur önbelleği yazılamadı.', e);
+    }
+}
+
+async function fetchWithTimeout(url, timeoutMs = 6000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { signal: controller.signal, mode: 'cors' });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+async function fetchRatesWithFallback(sources) {
+    for (const source of sources) {
+        try {
+            const response = await fetchWithTimeout(source.url, 6000);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const parsed = source.parse(data);
+            if (parsed) return parsed;
+            throw new Error('Ayrıştırma başarısız');
+        } catch (e) {
+            console.warn(`Kur kaynağı başarısız, sonrakine geçiliyor: ${source.url}`, e?.message || e);
+        }
+    }
+    return null;
+}
+
+loadRatesFromCache();
+
 async function fetchExchangeRates() {
     try {
-    const [currencyResult, goldResult] = await Promise.allSettled([
-        fetch('https://api.exchangerate-api.com/v4/latest/USD').then(response => {
-            if (!response.ok) throw new Error('Döviz kuru alınamadı');
-            return response.json();
-        }),
-        fetch('https://xaus.com/api/v1/spot?currency=TRY&unit=gram').then(response => {
-            if (!response.ok) throw new Error('Altın kuru alınamadı');
-            return response.json();
-        })
+    const forexResult = await fetchRatesWithFallback([
+        {
+            url: 'https://open.er-api.com/v6/latest/USD',
+            parse: (data) => {
+                const usdTry = Number(data?.rates?.TRY);
+                const eurPerUsd = Number(data?.rates?.EUR);
+                if (!(usdTry > 0) || !(eurPerUsd > 0)) return null;
+                return { USD: usdTry, EUR: usdTry / eurPerUsd };
+            }
+        },
+        {
+            url: 'https://api.frankfurter.app/latest?from=USD&to=TRY,EUR',
+            parse: (data) => {
+                const usdTry = Number(data?.rates?.TRY);
+                const eurPerUsd = Number(data?.rates?.EUR);
+                if (!(usdTry > 0) || !(eurPerUsd > 0)) return null;
+                return { USD: usdTry, EUR: usdTry / eurPerUsd };
+            }
+        },
+        {
+            url: 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json',
+            parse: (data) => {
+                const usdTry = Number(data?.usd?.try);
+                const eurPerUsd = Number(data?.usd?.eur);
+                if (!(usdTry > 0) || !(eurPerUsd > 0)) return null;
+                return { USD: usdTry, EUR: usdTry / eurPerUsd };
+            }
+        },
+        {
+            url: 'https://api.exchangerate-api.com/v4/latest/USD',
+            parse: (data) => {
+                const usdTry = Number(data?.rates?.TRY);
+                const eurPerUsd = Number(data?.rates?.EUR);
+                if (!(usdTry > 0) || !(eurPerUsd > 0)) return null;
+                return { USD: usdTry, EUR: usdTry / eurPerUsd };
+            }
+        }
     ]);
 
-    if (currencyResult.status === 'fulfilled') {
-        const data = currencyResult.value;
-        exchangeRates.USD = Number(data.rates?.TRY) || exchangeRates.USD;
-        exchangeRates.EUR = exchangeRates.USD && data.rates?.EUR ? exchangeRates.USD / Number(data.rates.EUR) : exchangeRates.EUR;
+    let forexLive = false;
+    if (forexResult) {
+        if (forexResult.USD > 0) exchangeRates.USD = forexResult.USD;
+        if (forexResult.EUR > 0) exchangeRates.EUR = forexResult.EUR;
+        forexLive = true;
     } else {
-        console.warn('Döviz kurları güncellenemedi.', currencyResult.reason);
+        console.warn('Döviz kurları güncellenemedi, önbellek kullanılıyor.');
     }
 
-    if (goldResult.status === 'fulfilled') {
-        const gramPrice = Number(goldResult.value.xau?.price);
-        if (gramPrice > 0) {
-            exchangeRates.GRAM_ALTIN = gramPrice;
-            // Standart çeyrek altın: 1,75 gr ve 22 ayar (22/24 saf altın oranı).
-            exchangeRates.CEYREK_ALTIN = gramPrice * 1.75 * (22 / 24);
+    const usdTryForGold = Number(exchangeRates.USD) || 0;
+    const goldResult = await fetchRatesWithFallback([
+        {
+            url: 'https://api.gold-api.com/price/XAU',
+            parse: (data) => {
+                const ounceUsd = Number(data?.price);
+                if (!(ounceUsd > 0) || !(usdTryForGold > 0)) return null;
+                return { gramTry: ounceUsd / 31.1035 * usdTryForGold };
+            }
+        },
+        {
+            url: 'https://api.metalpriceapi.com/v1/latest?api_key=demo&base=USD&currencies=XAU',
+            parse: (data) => {
+                const rates = data?.rates || {};
+                const xau = Number(rates.XAU ?? rates.xau);
+                if (!(xau > 0)) return null;
+                // xau: 1 USD = x XAU ise ons fiyatı = 1/xau USD
+                if (xau < 0.01 && usdTryForGold > 0) return { gramTry: (1 / xau) / 31.1035 * usdTryForGold };
+                if (xau > 100 && usdTryForGold > 0) return { gramTry: xau / 31.1035 * usdTryForGold };
+                return null;
+            }
+        },
+        {
+            url: 'https://data-asg.goldprice.org/dbXRates/TRY',
+            parse: (data) => {
+                const item = data?.items?.[0];
+                const xauPrice = Number(item?.xauPrice);
+                if (!(xauPrice > 0)) return null;
+                // TRY bazlı ons fiyatıysa grama çevir, zaten gram fiyatsa direkt al.
+                if (xauPrice > 1000) return { gramTry: xauPrice / 31.1035 };
+                return { gramTry: xauPrice };
+            }
+        },
+        {
+            url: 'https://xaus.com/api/v1/spot?currency=TRY&unit=gram',
+            parse: (data) => {
+                const gramPrice = Number(data?.xau?.price);
+                if (!(gramPrice > 0)) return null;
+                return { gramTry: gramPrice };
+            }
         }
+    ]);
+
+    let goldLive = false;
+    if (goldResult && goldResult.gramTry > 0) {
+        exchangeRates.GRAM_ALTIN = goldResult.gramTry;
+        // Standart çeyrek altın: 1,75 gr ve 22 ayar (22/24 saf altın oranı).
+        exchangeRates.CEYREK_ALTIN = goldResult.gramTry * 1.75 * (22 / 24);
+        goldLive = true;
     } else {
-        console.warn('Altın kurları güncellenemedi.', goldResult.reason);
+        console.warn('Altın kurları güncellenemedi, önbellek kullanılıyor.');
+    }
+
+    if (forexLive && goldLive) {
+        ratesStatus = 'live';
+        saveRatesToCache();
+    } else if (forexLive || goldLive) {
+        // Kısmi başarı: canlı geleni kaydet, durumu cache (turuncu) say.
+        ratesStatus = 'cache';
+        saveRatesToCache();
+    } else {
+        loadRatesFromCache();
+        const hasValues = exchangeRates.USD > 0 || exchangeRates.GRAM_ALTIN > 0;
+        ratesStatus = hasValues ? 'cache' : 'error';
     }
     } finally {
         updateExchangeRatesDisplay();
         if (currentUser) {
             updateAllUI();
-            checkNotifications();
-            checkRateAlerts();
-            updateNotificationsUI();
         }
     }
 }
@@ -383,6 +559,12 @@ function updateExchangeRatesDisplay() {
     if (rateGRAM) rateGRAM.textContent = formatRate(exchangeRates.GRAM_ALTIN);
     if (rateCEYREK) rateCEYREK.textContent = formatRate(exchangeRates.CEYREK_ALTIN);
     if (lastRateUpdate) lastRateUpdate.textContent = new Date().toLocaleTimeString('tr-TR');
+    const statusDot = document.getElementById('ratesStatusDot');
+    if (statusDot) {
+        const colors = { live: 'var(--income-color)', cache: 'var(--warning-color)', error: 'var(--expense-color)' };
+        statusDot.style.background = colors[ratesStatus] || 'var(--text-secondary)';
+        statusDot.title = ratesStatus === 'live' ? 'Kurlar canlı' : ratesStatus === 'cache' ? 'Önbellekten gösteriliyor' : ratesStatus === 'error' ? 'Kurlar alınamadı' : 'Kur durumu';
+    }
     updateAccountRateInfo();
     updateTransactionPurchaseFields();
 }
@@ -472,7 +654,6 @@ auth.onAuthStateChanged(async (user) => {
     if (user) {
         currentUser = user;
         securityLocked = false;
-        loadNotifications();
         document.getElementById('loginModal').style.display = 'none';
         document.getElementById('app').style.display = 'block';
         const userName = user.displayName || user.email.split('@')[0];
@@ -482,14 +663,11 @@ auth.onAuthStateChanged(async (user) => {
         isHidden = true;
         totalBalanceVisible = false;
         updateAllUI();
-        checkNotifications();
-        updateNotificationsUI();
 
         subscribeToPrivacyMode(user.uid);
         await fetchExchangeRates();
         await loadUserData();
         await configureSecurityUI();
-        updateRateAlertInputs();
         scheduleRateRefresh();
     } else {
         if (privacyModeUnsubscribe) {
@@ -521,18 +699,22 @@ async function loadUserData() {
                 currency: 'TRY',
                 currentMonth: currentMonth,
                 selectedAccounts: [],
-                themeColor: 'green',
+                themeColor: '#9C27B0',
                 privacyModeEnabled: false,
+                role: 'user',
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
         } else {
             const settings = userDoc.data();
-            currentCurrency = settings.currency || 'TRY';
+            currentCurrency = 'TRY';
+            userRole = settings.role === 'admin' ? 'admin' : 'user';
+            isAdmin = userRole === 'admin';
+            updateAdminVisibility();
+            if (isAdmin && typeof window.loadAdminData === 'function') window.loadAdminData();
             if (settings.currentMonth) currentMonth = settings.currentMonth;
-            if (settings.themeColor) { currentThemeColor = settings.themeColor; applyThemeColor(currentThemeColor); }
+            currentThemeColor = '#9C27B0';
+            applyThemeColor();
             isHidden = Boolean(settings.privacyModeEnabled);
-            const currencySetting = document.getElementById('currencySetting');
-            if (currencySetting) currencySetting.value = currentCurrency;
             if (settings.selectedAccounts && settings.selectedAccounts.length > 0) {
                 selectedAccounts = new Set(settings.selectedAccounts);
             } else {
@@ -576,9 +758,12 @@ async function loadUserData() {
         goals = [];
         goalsSnapshot.forEach(doc => goals.push({ id: doc.id, ...doc.data() }));
 
+        await loadBudgets();
+        loadNotifications();
         updateAllUI();
         checkNotifications();
         updateNotificationsUI();
+        if (typeof initPush === 'function') initPush();
     } catch (error) {
         console.error('Veri yükleme hatası:', error);
         if (error.code === 'permission-denied') showToast('Firestore kuralları hatalı. Lütfen kuralları kontrol edin.', 'error');
@@ -694,11 +879,14 @@ function setPrivacyModeUI(enabled) {
 }
 
 function updateAllUI() {
+    updateAdminVisibility();
     updateAccountsUI();
     updateDashboard();
     updateTransactionsUI();
     updateRecurringTransactionsUI();
     updateGoalsUI();
+    updateBudgetsUI();
+    updateNotificationsUI();
     updateCharts();
     updateProfitLossReport();
     updateAdvancedReports();
@@ -708,62 +896,23 @@ function updateAllUI() {
     if (monthDisplay) monthDisplay.textContent = formatMonth(currentMonth);
 }
 
+function updateAdminVisibility() {
+    const link = document.getElementById('adminLink');
+    if (link) link.style.display = isAdmin ? 'flex' : 'none';
+    if (!isAdmin) {
+        const adminPage = document.getElementById('admin');
+        if (adminPage && adminPage.classList.contains('active')) {
+            adminPage.classList.remove('active');
+            document.getElementById('dashboard')?.classList.add('active');
+        }
+    }
+}
+
 function getTransactionValueTL(transaction) {
     const account = accounts.find(item => item.id === transaction.accountId);
     if (!isInvestmentAccount(account)) return Number(transaction.amount || 0);
     const rate = Number(transaction.transactionRate || exchangeRates[transaction.accountCurrency] || getAccountOpeningRate(account) || 0);
     return Number(transaction.amount || 0) * rate;
-}
-
-function getAssistantAnswer(question) {
-    const normalized = question.toLocaleLowerCase('tr-TR');
-    const currentExpenses = transactions.filter(item => item.type === 'expense' && item.date?.startsWith(currentMonth));
-    const currentIncome = transactions.filter(item => item.type === 'income' && item.date?.startsWith(currentMonth));
-    const incomeTotal = currentIncome.reduce((sum, item) => sum + getTransactionValueTL(item), 0);
-    const expenseTotal = currentExpenses.reduce((sum, item) => sum + getTransactionValueTL(item), 0);
-    const previousMonthDate = new Date(`${currentMonth}-01T12:00:00`);
-    previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
-    const previousMonth = previousMonthDate.toISOString().substring(0, 7);
-    const previousExpenses = transactions.filter(item => item.type === 'expense' && item.date?.startsWith(previousMonth));
-    const previousExpenseTotal = previousExpenses.reduce((sum, item) => sum + getTransactionValueTL(item), 0);
-    const expenseChange = previousExpenseTotal > 0 ? ((expenseTotal - previousExpenseTotal) / previousExpenseTotal) * 100 : 0;
-    const categoryTotals = currentExpenses.reduce((result, item) => {
-        const category = (item.category || 'Diğer').replace(/^[^A-Za-zÇĞİÖŞÜçğıöşü0-9]+/u, '').trim() || 'Diğer';
-        result[category] = (result[category] || 0) + getTransactionValueTL(item);
-        return result;
-    }, {});
-    const topCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0];
-    const savings = incomeTotal - expenseTotal;
-
-    if (normalized.includes('neden') || normalized.includes('azaldı') || normalized.includes('azaldi')) {
-        if (!currentExpenses.length) return 'Bu ay henüz gider kaydı görünmüyor. Yeni işlemler eklendikçe harcama nedenlerini analiz edebilirim.';
-        const changeText = previousExpenseTotal > 0
-            ? `Geçen aya göre harcamaların %${Math.abs(expenseChange).toFixed(0)} ${expenseChange >= 0 ? 'arttı' : 'azaldı'}.`
-            : 'Geçen ay karşılaştırılabilir bir gider verisi yok.';
-        const categoryText = topCategory ? `En yüksek harcama ${topCategory[0]} kategorisinde: ₺${topCategory[1].toFixed(2)}.` : '';
-        return `${changeText} ${categoryText} Bu ay toplam ₺${expenseTotal.toFixed(2)} harcama yaptın.`;
-    }
-
-    if (normalized.includes('birikt') || normalized.includes('tasarruf') || normalized.includes('5000') || normalized.includes('5.000')) {
-        const requested = Number((question.match(/[\d.]+/) || ['5000'])[0].replace(/\./g, '')) || 5000;
-        return savings >= requested
-            ? `Evet. Mevcut verilere göre bu ay yaklaşık ₺${savings.toFixed(2)} ayırabilirsin; ₺${requested.toFixed(2)} hedefin ulaşılabilir görünüyor.`
-            : `Şu anki gelir-gider verilerine göre yaklaşık ₺${Math.max(0, savings).toFixed(2)} tasarruf alanı var. ₺${requested.toFixed(2)} hedefi için ₺${Math.max(0, requested - savings).toFixed(2)} daha alan açman gerekir.`;
-    }
-
-    return `Bu ay ₺${incomeTotal.toFixed(2)} gelir ve ₺${expenseTotal.toFixed(2)} gider kaydı var. Gelir-gider farkın ₺${savings.toFixed(2)}. “Bu ay param neden azaldı?” veya “₺5.000 biriktirebilir miyim?” diye sorabilirsin.`;
-}
-
-function askFinanceAssistant(question) {
-    const response = document.getElementById('assistantResponse');
-    if (!response) return;
-    const trimmedQuestion = String(question || '').trim();
-    if (!trimmedQuestion) return;
-    if (isHidden) {
-        response.innerHTML = '<i class="fas fa-lock"></i><span>Gizlilik modu açıkken finansal analiz gösterilemiyor.</span>';
-        return;
-    }
-    response.innerHTML = `<i class="fas fa-sparkles"></i><span>${escapeHtml(getAssistantAnswer(trimmedQuestion))}</span>`;
 }
 
 function updateBalanceForecast() {
@@ -1352,7 +1501,7 @@ function updateAccountsUI() {
     const toAccount = document.getElementById('toAccount');
     const filterAccount = document.getElementById('filterAccount');
     const accountSelector = document.getElementById('accountSelector');
-    
+
     const currencySymbols = { TRY: '₺', USD: '$', EUR: '€', GRAM_ALTIN: '🪙', CEYREK_ALTIN: '🪙' };
     const typeIcons = { bank: '🏦', cash: '💵', credit: '💳', ewallet: '📱', investment: '📈', crypto: '₿', debt: '🤝' };
 
@@ -1484,7 +1633,6 @@ function updateTransactionsUI() {
             accountName: t.accountName || '',
             accountCurrency: t.accountCurrency || 'TRY',
             accountId: t.accountId,
-            receiptBase64: t.receiptBase64 || null,
             accountOpeningRate: Number(t.accountOpeningRate || 0),
             purchaseRate: Number(t.purchaseRate || t.accountOpeningRate || 0),
             transactionRate: Number(t.transactionRate || 0),
@@ -1539,21 +1687,17 @@ function updateTransactionsUI() {
         const installmentDisplay = !isTransfer && item.isInstallment
             ? `<div class="transaction-rate-modern"><i class="fas fa-credit-card"></i> ${item.installmentCount} taksit · Faiz: %${item.installmentInterestRate.toFixed(2)} · Aylık ₺${item.installmentAmount.toFixed(2)} · Toplam ₺${item.installmentTotal.toFixed(2)} · Sonraki: ${new Date(new Date(`${item.date}T12:00:00`).setMonth(new Date(`${item.date}T12:00:00`).getMonth() + 1)).toLocaleDateString('tr-TR')}</div>`
             : '';
-        
+
         let deleteBtn = '';
         if (item.isTransfer) deleteBtn = `<button class="delete-btn" onclick="deleteTransfer('${item.id}')"><i class="fas fa-trash"></i></button>`;
         else deleteBtn = `<div class="transaction-actions"><button class="edit-transaction-btn" onclick="editTransaction('${item.id}')" title="İşlemi düzenle"><i class="fas fa-edit"></i></button><button class="delete-btn" onclick="deleteTransaction('${item.id}')" title="İşlemi sil"><i class="fas fa-trash"></i></button></div>`;
-        
-        let receiptIcon = '';
-        if (item.receiptBase64) receiptIcon = `<button class="receipt-link" onclick="showReceipt('${item.receiptBase64}')" title="Fişi Gör"><i class="fas fa-receipt"></i></button>`;
-        
+
         return `<div class="transaction-card-modern">
             <div class="transaction-icon-modern ${amountClass}"><i class="fas ${icon}"></i></div>
             <div class="transaction-info-modern">
                 <div class="transaction-title-modern">${escapeHtml(item.category)}</div>
                 <div class="transaction-subtitle-modern">${escapeHtml(item.description)} • ${escapeHtml(item.date)}${purchaseRateDisplay}${transactionRateDisplay}${profitLossDisplay}${installmentDisplay}</div>
             </div>
-            ${receiptIcon}
             <div class="transaction-amount-modern ${amountClass}">${amountDisplay}</div>
             ${deleteBtn}
         </div>`;
@@ -1609,15 +1753,6 @@ function updateTransactionsUI() {
         document.getElementById('add-transaction').classList.add('active');
         document.querySelectorAll('.sidebar-link').forEach(link => link.classList.toggle('active', link.dataset.page === 'transactions'));
     };
-}
-
-function showReceipt(base64Data) {
-    const win = window.open();
-    if (!win) {
-        showToast('Fişi görüntülemek için açılır pencerelere izin verin.', 'error');
-        return;
-    }
-    win.document.write(`<img src="${base64Data}" style="max-width:100%;">`);
 }
 
 function updateGoalsUI() {
@@ -1972,10 +2107,10 @@ async function saveSettings() {
     if (!currentUser) return;
     try {
         await db.collection('users').doc(currentUser.uid).set({
-            currency: currentCurrency,
+            currency: 'TRY',
             currentMonth: currentMonth,
             selectedAccounts: Array.from(selectedAccounts),
-            themeColor: currentThemeColor
+            themeColor: '#9C27B0'
         }, { merge: true });
     } catch (e) { console.error(e); }
 }
@@ -1995,7 +2130,7 @@ async function clearAllData() {
 }
 
 function exportData() {
-    const data = { settings: { currency: currentCurrency, currentMonth: currentMonth, selectedAccounts: Array.from(selectedAccounts), themeColor: currentThemeColor }, accounts, transactions, transfers, recurringTransactions, goals };
+    const data = { settings: { currency: 'TRY', currentMonth: currentMonth, selectedAccounts: Array.from(selectedAccounts), themeColor: '#9C27B0' }, accounts, transactions, transfers, recurringTransactions, goals };
     const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data, null, 2));
     const link = document.createElement('a');
     link.setAttribute('href', dataUri);
@@ -2011,11 +2146,12 @@ async function importData(file) {
         try {
             const data = JSON.parse(e.target.result);
             if (data.settings) {
-                if (data.settings.currency) { currentCurrency = data.settings.currency; const el = document.getElementById('currencySetting'); if (el) el.value = currentCurrency; }
+                currentCurrency = 'TRY';
                 if (data.settings.currentMonth) currentMonth = data.settings.currentMonth;
                 if (data.settings.selectedAccounts) selectedAccounts = new Set(data.settings.selectedAccounts);
-                if (data.settings.themeColor) { currentThemeColor = data.settings.themeColor; applyThemeColor(currentThemeColor); }
-                await db.collection('users').doc(currentUser.uid).set({ currency: currentCurrency, currentMonth: currentMonth, selectedAccounts: Array.from(selectedAccounts), themeColor: currentThemeColor }, { merge: true });
+                currentThemeColor = '#9C27B0';
+                applyThemeColor();
+                await db.collection('users').doc(currentUser.uid).set({ currency: 'TRY', currentMonth: currentMonth, selectedAccounts: Array.from(selectedAccounts), themeColor: '#9C27B0' }, { merge: true });
             }
             // Dışa aktarılan ID'leri koru; aksi halde transaction.accountId ve
             // recurringId referansları yeni hesaplara bağlanamıyordu.
@@ -2039,176 +2175,7 @@ async function importData(file) {
     reader.readAsText(file);
 }
 
-// SESLİ KOMUT
-function startVoiceRecognition() {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        showToast('Tarayıcınız sesli komut desteklemiyor.', 'error');
-        return;
-    }
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
-    recognition.lang = 'tr-TR';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    document.getElementById('voiceResult').innerHTML = '<p>Dinleniyor... 🎤</p>';
-    recognition.start();
-    recognition.onresult = function(event) {
-        const transcript = event.results[0][0].transcript;
-        document.getElementById('voiceResult').innerHTML = `<p><strong>Algılanan:</strong> "${escapeHtml(transcript)}"</p>`;
-        processVoiceCommand(transcript);
-    };
-    recognition.onerror = function(event) {
-        document.getElementById('voiceResult').innerHTML = '';
-        showToast('Ses algılama hatası: ' + event.error, 'error');
-    };
-    recognition.onend = function() {
-        document.getElementById('voiceResult').innerHTML += '<p>Dinleme bitti.</p>';
-    };
-}
 
-function processVoiceCommand(text) {
-    const lower = text.toLowerCase();
-    let type = null;
-    let amount = null;
-    let accountName = null;
-    let category = null;
-
-    const amountMatch = lower.match(/(\d+([.,]\d+)?)\s*(tl|lira|₺|dolar|euro|eur|usd)/);
-    if (amountMatch) amount = parseFloat(amountMatch[1].replace(',', '.'));
-
-    if (lower.includes('gelir') || lower.includes('maaş') || lower.includes('para geldi') || lower.includes('kazand')) type = 'income';
-    else if (lower.includes('masraf') || lower.includes('harca') || lower.includes('öde') || lower.includes('aldım') || lower.includes('ald')) type = 'expense';
-    else if (lower.includes('transfer') || lower.includes('gönder') || lower.includes('havale')) type = 'transfer';
-
-    for (const acc of accounts) {
-        if (lower.includes(acc.name.toLowerCase())) {
-            accountName = acc.name;
-            break;
-        }
-    }
-
-    if (lower.includes('market')) category = '🛒 Market';
-    else if (lower.includes('yemek') || lower.includes('restoran')) category = '🍔 Yemek';
-    else if (lower.includes('ulaşım') || lower.includes('taksi') || lower.includes('otobüs')) category = '🚗 Ulaşım';
-    else if (lower.includes('fatura')) category = '💡 Faturalar';
-    else if (lower.includes('kira')) category = '🏠 Kira';
-    else if (lower.includes('eğlence')) category = '🎮 Eğlence';
-    else if (lower.includes('sağlık')) category = '💊 Sağlık';
-    else if (lower.includes('eğitim')) category = '📚 Eğitim';
-    else if (lower.includes('giyim')) category = '👕 Giyim';
-    else if (lower.includes('teknoloji') || lower.includes('telefon')) category = '📱 Teknoloji';
-    else category = '📋 Diğer';
-
-    if (type === 'transfer') {
-        showToast('Transfer işlemi için lütfen formu kullanın.', 'warning');
-        return;
-    }
-
-    if (!type || !amount || !accountName) {
-        showToast('Komut tam anlaşılamadı. Lütfen tekrar deneyin.', 'error');
-        return;
-    }
-
-    selectedType = type;
-    document.querySelectorAll('.type-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.type === type);
-    });
-    document.getElementById('accountSelect').value = accounts.find(a => a.name === accountName)?.id || '';
-    document.getElementById('amount').value = amount;
-    document.getElementById('category').value = category;
-    document.getElementById('description').value = 'Sesli komut ile eklendi';
-    document.getElementById('date').value = new Date().toISOString().split('T')[0];
-    showToast('Form dolduruldu, lütfen kaydet butonuna basın.', 'success');
-}
-
-// FİŞ YÜKLEME (Base64) — Akıllı OCR + Otomatik Form Doldurma
-async function preprocessReceiptImage(file) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const maxDim = 800; // Boyut Firestore için küçültüldü
-            let { width, height } = img;
-            if (width > maxDim || height > maxDim) {
-                const scale = maxDim / Math.max(width, height);
-                width *= scale;
-                height *= scale;
-            }
-            canvas.width = width;
-            canvas.height = height;
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // AI okuması için kontrast vb. işlemlere gerek yok (modern AI'lar renkli orijinali daha iyi anlar)
-            // Sadece boyutu küçültüp 0.60 kalitede JPEG olarak kaydediyoruz
-            resolve(canvas.toDataURL('image/jpeg', 0.60));
-        };
-        img.onerror = () => resolve(null);
-        img.src = URL.createObjectURL(file);
-    });
-}
-
-async function handleReceiptUpload(input) {
-    const file = input.files[0];
-    if (!file) return;
-    const preview = document.getElementById('receiptPreview');
-    preview.innerHTML = '<p>Fiş okunuyor... ⏳</p>';
-    
-    // Once goruntuyu on-isle (grayscale + kontrast + keskinlesirme)
-    const processedDataUrl = await preprocessReceiptImage(file);
-    if (!processedDataUrl) {
-        preview.innerHTML = '<p style="color:var(--expense-color);">Goruntu islenemedi.</p>';
-        showToast('Goruntu islenemedi.', 'error');
-        return;
-    }
-    receiptBase64 = processedDataUrl;
-    preview.innerHTML = `<img src="${processedDataUrl}" style="max-width:100%; max-height:200px; border-radius:10px; margin-top:10px;">`;
-
-    try {
-        // YAPAY ZEKA API ÇAĞRISI BURAYA GELECEK
-        // Örnek: Gemini API veya OpenAI Vision API kullanarak processedDataUrl gönderilecek.
-        
-        // Şimdilik simüle ediyoruz:
-        setTimeout(() => {
-            const parsed = {
-                amount: null,
-                date: new Date().toISOString().split('T')[0],
-                merchant: 'Yapay Zeka Hazırlığı',
-                category: '📋 Diğer',
-                description: 'AI ile okunacak'
-            };
-            
-            // İşlem tipini masraf olarak varsay
-            if (!selectedType || selectedType === 'income') {
-                selectedType = 'expense';
-                document.querySelectorAll('.type-btn').forEach(btn => {
-                    btn.classList.toggle('active', btn.dataset.type === 'expense');
-                });
-                updateCategorySelect();
-            }
-            
-            // Form alanlarını doldur
-            if (parsed.amount) document.getElementById('amount').value = parsed.amount.toFixed(2);
-            if (parsed.date) document.getElementById('date').value = parsed.date;
-            if (parsed.category) {
-                updateCategorySelect();
-                document.getElementById('category').value = parsed.category;
-            }
-            if (parsed.description) document.getElementById('description').value = parsed.description;
-            
-            showToast('Yapay zeka entegrasyonu hazır. Lütfen backend bağlantısını yapın.', 'warning');
-            preview.innerHTML = `<img src="${processedDataUrl}" style="max-width:100%; max-height:200px; border-radius:10px; margin-top:10px;"><p style="color:var(--text-secondary); font-size:0.8rem; margin-top:10px;">Fiş API üzerinden analiz edilecek.</p>`;
-        }, 1500);
-
-    } catch (error) {
-        console.error(error);
-        preview.innerHTML += '<p style="color:var(--expense-color);">AI okuma başarısız. Lütfen tutarı elle girin.</p>';
-        showToast('Fiş okunamadı.', 'error');
-    }
-}
-
-// AI Parse sonuçları doğrudan backend/API'den JSON olarak geleceği için
-// manuel metin ayrıştırma fonksiyonları temizlenmiştir.
 
 // GİZLİLİK MODU: Kullanıcı belgesinde saklanır ve tüm açık tarayıcılara eşitlenir.
 async function togglePrivacyMode() {

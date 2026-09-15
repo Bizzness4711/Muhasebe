@@ -1,0 +1,22 @@
+name: Push reminders
+
+on:
+  schedule:
+    # Her saat başı (UTC). Ücretsiz limit: ayda ~720 dk.
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm init -y && npm install firebase-admin
+        working-directory: tools/push
+      - run: node send.js
+        working-directory: tools/push
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

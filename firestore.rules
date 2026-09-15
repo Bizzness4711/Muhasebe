@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function isAdmin() {
+      return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Kullanıcı profili: kendin okuyabilirsin, admin hepsini listeleyebilir.
+    // İlk admini Firebase Console'dan manuel ver: users/{uid} -> role = "admin"
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid);
+      // Rol alanını sadece admin değiştirebilir, normal kullanıcı değiştiremez.
+      allow update: if isOwner(uid) && !('role' in request.resource.data) || ('role' in resource.data && request.resource.data.role == resource.data.role)
+                 || isAdmin();
+      allow delete: if isAdmin();
+
+      match /accounts/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
+      match /transactions/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
+      match /transfers/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
+      match /recurringTransactions/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
+      match /goals/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
+      match /budgets/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
+      // Push token: cihaz kendi tokenını yazar. pushLog'u sadece sunucu (Admin SDK) yazar.
+      match /pushTokens/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
+      match /pushLog/{doc} { allow read: if isOwner(uid) || isAdmin(); allow write: if false; }
+    }
+  }
+}

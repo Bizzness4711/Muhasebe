@@ -14,6 +14,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-messaging-compat.js"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -103,9 +104,10 @@
                 <a href="#transfer" class="sidebar-link" data-page="transfer"><i class="fas fa-exchange-alt"></i><span>Transfer</span></a>
                 <a href="#transactions" class="sidebar-link" data-page="transactions"><i class="fas fa-list"></i><span>İşlemler</span></a>
                 <a href="#goals" class="sidebar-link" data-page="goals"><i class="fas fa-bullseye"></i><span>Hedefler</span></a>
+                <a href="#budgets" class="sidebar-link" data-page="budgets"><i class="fas fa-wallet"></i><span>Bütçeler</span></a>
                 <a href="#reports" class="sidebar-link" data-page="reports"><i class="fas fa-chart-bar"></i><span>Raporlar</span></a>
-                <a href="#finance-assistant" class="sidebar-link assistant-nav-link" data-page="dashboard" data-assistant-target="true"><i class="fas fa-sparkles"></i><span>Finans Asistanı</span><b>AI</b></a>
                 <a href="#settings" class="sidebar-link" data-page="settings"><i class="fas fa-cog"></i><span>Ayarlar</span></a>
+                <a href="#admin" class="sidebar-link" data-page="admin" id="adminLink" style="display:none;"><i class="fas fa-user-shield"></i><span>Admin</span></a>
             </div>
         </nav>
 
@@ -120,7 +122,7 @@
 
                 <div class="exchange-rates-container">
                     <div class="exchange-rates-header">
-                        <h3>Güncel Kurlar</h3>
+                        <h3>Güncel Kurlar<span id="ratesStatusDot" class="rates-status-dot" title="Kur durumu"></span></h3>
                         <button id="updateRatesBtn" class="refresh-btn"><i class="fas fa-sync"></i></button>
                     </div>
                     <div class="exchange-rates-grid">
@@ -159,6 +161,11 @@
                     <div class="stat-card installment stat-card-action" id="upcomingInstallmentsCard" role="button" tabindex="0" aria-label="Bu ay gelecek taksitleri görüntüle"><h3>Bu Ay Gelecek Taksit</h3><p id="upcomingInstallments">₺0.00</p><small>Kredi kartlarına göre görüntüle</small><i class="fas fa-calendar-check"></i></div>
                 </div>
 
+                <section class="recent-transactions" id="budgetOverviewCard" style="display:none;margin-bottom:20px;" aria-label="Bütçe özeti">
+                    <div class="section-header"><h3>Bütçe Durumu</h3></div>
+                    <div id="budgetOverview"></div>
+                </section>
+
                 <section class="balance-forecast" aria-labelledby="balanceForecastTitle">
                     <div class="forecast-header">
                         <div>
@@ -176,28 +183,6 @@
                         <div class="forecast-line" aria-hidden="true"><i></i></div>
                         <div class="forecast-events" id="forecastEvents"><p class="empty-state">Önümüzdeki 30 gün için planlanmış hareket yok.</p></div>
                         <div class="forecast-end"><span>Tahmini bakiye</span><strong id="forecastEndingBalance">₺0.00</strong></div>
-                    </div>
-                </section>
-
-                <section id="finance-assistant" class="finance-assistant" aria-labelledby="financeAssistantTitle">
-                    <div class="assistant-header">
-                        <div class="assistant-avatar"><i class="fas fa-sparkles"></i></div>
-                        <div>
-                            <span class="section-eyebrow">FINORA INTELLIGENCE</span>
-                            <h2 id="financeAssistantTitle">Yapay zekâ finans asistanı</h2>
-                            <p>Finans verilerinizi analiz ederek kısa ve anlaşılır yanıtlar verir.</p>
-                        </div>
-                    </div>
-                    <div class="assistant-suggestions" aria-label="Önerilen sorular">
-                        <button type="button" class="assistant-suggestion" data-question="Bu ay param neden azaldı?">Bu ay param neden azaldı?</button>
-                        <button type="button" class="assistant-suggestion" data-question="Bu ay 5000 TL biriktirebilir miyim?">₺5.000 biriktirebilir miyim?</button>
-                    </div>
-                    <form id="assistantForm" class="assistant-form">
-                        <input id="assistantQuestion" type="text" autocomplete="off" placeholder="Finansların hakkında bir soru sor..." aria-label="Finans asistanına soru sor">
-                        <button type="submit" aria-label="Soruyu gönder"><i class="fas fa-arrow-up"></i></button>
-                    </form>
-                    <div id="assistantResponse" class="assistant-response" aria-live="polite">
-                        <i class="fas fa-lightbulb"></i><span>Örneğin “Bu ay param neden azaldı?” diye sorabilirsin.</span>
                     </div>
                 </section>
 
@@ -316,23 +301,6 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label>Fiş / Görsel</label>
-                        <div class="receipt-upload-actions">
-                            <button type="button" class="add-btn" id="openReceiptCameraBtn"><i class="fas fa-camera"></i> Fişi Fotoğrafla</button>
-                            <input type="file" id="receiptFile" accept="image/*" capture="environment" style="display:none;" onchange="handleReceiptUpload(this)">
-                            <button type="button" class="add-btn" onclick="document.getElementById('receiptFile').click()">
-                                <i class="fas fa-upload"></i> Galeriden Seç
-                            </button>
-                            <button type="button" class="add-btn" id="voiceBtn" onclick="startVoiceRecognition()">
-                                <i class="fas fa-microphone"></i> Sesli Komut
-                            </button>
-                        </div>
-                        <small>Fişi fotoğraflayın, yapay zekâ tutarı, tarihi ve kategoriyi otomatik doldursun; siz sadece kontrol edip kaydedin.</small>
-                    </div>
-                    <div id="receiptPreview" class="receipt-preview"></div>
-                    <div id="voiceResult" style="margin-top:10px;"></div>
-
                     <button type="submit" id="transactionSubmitBtn" class="submit-btn"><i class="fas fa-save"></i> Kaydet</button>
                 </form>
             </div>
@@ -344,6 +312,19 @@
                     <button id="addGoalBtn" class="add-btn"><i class="fas fa-plus"></i> Yeni Hedef</button>
                 </div>
                 <div id="goalsList" class="goals-list"></div>
+            </div>
+
+            <!-- Budgets -->
+            <div id="budgets" class="page">
+                <div class="page-header"><h2>Aylık Bütçeler</h2></div>
+                <form id="budgetForm" class="transaction-form">
+                    <div class="form-group"><label>Kategori (masraf)</label><select id="budgetCategory" required><option value="">Kategori Seçin</option></select></div>
+                    <div class="form-group"><label>Aylık limit (₺)</label><input type="number" id="budgetLimit" required min="1" step="0.01" placeholder="Örn: 5000"></div>
+                    <div class="form-group"><label>Ay</label><input type="month" id="budgetMonth" required></div>
+                    <button type="submit" class="submit-btn"><i class="fas fa-save"></i> Bütçe Kaydet</button>
+                </form>
+                <div class="page-header" style="margin-top:22px;"><h2>Bu Ayın Bütçeleri</h2></div>
+                <div id="budgetsList" class="goals-list"></div>
             </div>
 
             <!-- Add Goal Modal -->
@@ -505,25 +486,6 @@
                 </div>
             </div>
 
-            <!-- Receipt Camera Modal -->
-            <div id="receiptCameraModal" class="modal receipt-camera-modal" style="display:none;">
-                <div class="modal-content receipt-camera-content">
-                    <div class="modal-header">
-                        <h2><i class="fas fa-camera"></i> Fişi Fotoğrafla</h2>
-                        <button id="closeReceiptCamera" type="button" class="close-btn">&times;</button>
-                    </div>
-                    <p class="modal-subtitle">Fişi net ve iyi ışıkta çerçeveye alın, sonra çekin.</p>
-                    <div class="receipt-camera-viewport">
-                        <video id="receiptCameraVideo" autoplay playsinline muted></video>
-                        <canvas id="receiptCameraCanvas" hidden></canvas>
-                    </div>
-                    <div class="receipt-camera-actions">
-                        <button type="button" id="receiptCaptureBtn" class="submit-btn"><i class="fas fa-camera"></i> Çek</button>
-                        <button type="button" id="receiptSwitchCameraBtn" class="cancel-btn"><i class="fas fa-camera-rotate"></i> Kamerayı Değiştir</button>
-                    </div>
-                </div>
-            </div>
-
             <!-- Reports -->
             <div id="reports" class="page">
                 <div class="page-header"><h2>Raporlar</h2></div>
@@ -610,48 +572,6 @@
                 <div class="page-header"><h2>Ayarlar</h2></div>
                 <div class="settings-container">
                     <div class="setting-item">
-                        <label>🎨 Renk Teması</label>
-                        <div class="theme-color-picker" id="themeColorPicker" role="group" aria-label="Tema rengini seçin">
-                            <button type="button" class="theme-swatch active" data-color-value="#4CAF50" style="--swatch-color:#4CAF50;" aria-label="Yeşil tema" title="Yeşil"></button>
-                            <button type="button" class="theme-swatch" data-color-value="#2196F3" style="--swatch-color:#2196F3;" aria-label="Mavi tema" title="Mavi"></button>
-                            <button type="button" class="theme-swatch" data-color-value="#9C27B0" style="--swatch-color:#9C27B0;" aria-label="Mor tema" title="Mor"></button>
-                            <button type="button" class="theme-swatch" data-color-value="#FF9800" style="--swatch-color:#FF9800;" aria-label="Turuncu tema" title="Turuncu"></button>
-                            <button type="button" class="theme-swatch" data-color-value="#00A896" style="--swatch-color:#00A896;" aria-label="Turkuaz tema" title="Turkuaz"></button>
-                            <button type="button" class="theme-swatch" data-color-value="#E85D75" style="--swatch-color:#E85D75;" aria-label="Mercan tema" title="Mercan"></button>
-                            <div class="rgb-editor" aria-label="Özel RGB renk değeri">
-                                <span class="rgb-label">RGB</span>
-                                <input id="themeRed" type="number" min="0" max="255" value="76" aria-label="Kırmızı değeri">
-                                <input id="themeGreen" type="number" min="0" max="255" value="175" aria-label="Yeşil değeri">
-                                <input id="themeBlue" type="number" min="0" max="255" value="80" aria-label="Mavi değeri">
-                                <button type="button" id="applyRgbColor" class="rgb-apply-btn" title="RGB rengini uygula" aria-label="RGB rengini uygula"><i class="fas fa-check"></i></button>
-                            </div>
-                            <output id="themeColorValue">RGB(76, 175, 80)</output>
-                        </div>
-                    </div>
-                    <div class="setting-item"><label>Ana Para Birimi</label><select id="currencySetting"><option value="TRY">₺ - Türk Lirası</option><option value="USD">$ - Dolar</option><option value="EUR">€ - Euro</option><option value="GRAM_ALTIN">🪙 Gram Altın</option><option value="CEYREK_ALTIN">🪙 Çeyrek Altın</option></select></div>
-                    <div class="setting-item"><label>Bildirimler</label><button id="enableNotificationsSettingBtn" class="export-btn" type="button"><i class="fas fa-bell"></i> Masaüstü bildirimlerini aç</button></div>
-                    <div class="setting-item">
-                        <label>Döviz ve Altın Kur Bildirimleri</label>
-                        <p class="hint-text">Alt ve üst limitlerden biri doluysa limit uyarısı gönderilir. Limit girmezseniz güncel kur bildirimi seçtiğiniz aralıkta gelir.</p>
-                        <div class="rate-alert-grid">
-                            <div class="rate-alert-row"><strong>💵 Dolar</strong><input id="alertLowerUSD" type="number" min="0" step="0.01" placeholder="Alt limit"><input id="alertUpperUSD" type="number" min="0" step="0.01" placeholder="Üst limit"></div>
-                            <div class="rate-alert-row"><strong>💶 Euro</strong><input id="alertLowerEUR" type="number" min="0" step="0.01" placeholder="Alt limit"><input id="alertUpperEUR" type="number" min="0" step="0.01" placeholder="Üst limit"></div>
-                            <div class="rate-alert-row"><strong>🪙 Gram Altın</strong><input id="alertLowerGRAM_ALTIN" type="number" min="0" step="0.01" placeholder="Alt limit"><input id="alertUpperGRAM_ALTIN" type="number" min="0" step="0.01" placeholder="Üst limit"></div>
-                            <div class="rate-alert-row"><strong>🪙 Çeyrek Altın</strong><input id="alertLowerCEYREK_ALTIN" type="number" min="0" step="0.01" placeholder="Alt limit"><input id="alertUpperCEYREK_ALTIN" type="number" min="0" step="0.01" placeholder="Üst limit"></div>
-                        </div>
-                        <div class="rate-alert-frequency">
-                            <label for="rateAlertFrequency">Limitsiz güncel kur bildirimi</label>
-                            <select id="rateAlertFrequency">
-                                <option value="1">Saatte bir</option>
-                                <option value="3">3 saatte bir</option>
-                                <option value="6">6 saatte bir</option>
-                                <option value="12">12 saatte bir</option>
-                                <option value="24">Günde bir</option>
-                            </select>
-                        </div>
-                        <button id="saveRateAlerts" class="export-btn" type="button"><i class="fas fa-save"></i> Kur bildirimlerini kaydet</button>
-                    </div>
-                    <div class="setting-item">
                         <label>Uygulama Güvenliği</label>
                         <div class="security-setting-row">
                             <input id="securityPin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" placeholder="4-8 haneli PIN" autocomplete="new-password">
@@ -677,7 +597,91 @@
                             <span id="importFileName" class="file-name">Henüz dosya seçilmedi</span>
                         </div>
                     </div>
+                    <div class="setting-item">
+                        <label>Bildirimler</label>
+                        <button id="enableNotificationsSettingBtn" class="export-btn" type="button"><i class="fas fa-bell"></i> Masaüstü bildirimlerini aç</button>
+                        <label class="checkbox-label"><input type="checkbox" id="notifSoundToggle" checked> Bildirim sesi çalsın</label>
+                        <button id="testNotifSoundBtn" class="export-btn" type="button"><i class="fas fa-volume-up"></i> Sesi test et</button>
+                        <small class="hint-text">Site kapalıyken bildirim gelmez; bildirimler uygulama açıkken üretilir.</small>
+                    </div>
                     <div class="setting-item danger"><label>Tüm Verileri Sil</label><button id="clearData" class="danger-btn"><i class="fas fa-trash"></i> Verileri Temizle</button></div>
+                </div>
+            </div>
+
+            <!-- Admin -->
+            <div id="admin" class="page">
+                <div class="page-header">
+                    <h2>Admin Paneli</h2>
+                    <button id="refreshAdminBtn" class="export-btn"><i class="fas fa-sync"></i> Yenile</button>
+                </div>
+                <div class="admin-tabs">
+                    <button class="admin-tab active" data-admin-tab="users">Kullanıcılar</button>
+                    <button class="admin-tab" data-admin-tab="stats">İstatistikler</button>
+                    <button class="admin-tab" data-admin-tab="activity">Aktivite</button>
+                    <button class="admin-tab" data-admin-tab="system">Sistem</button>
+                </div>
+                <div class="admin-tab-panels">
+                    <div class="admin-tab-panel active" data-admin-panel="users">
+                        <div class="report-card full-width advanced-table-card">
+                            <h3>Kullanıcılar</h3>
+                            <div class="admin-toolbar">
+                                <input type="search" id="adminSearch" placeholder="E-posta veya isim ara...">
+                                <select id="adminRoleFilter" class="filter-select" aria-label="Rol filtresi">
+                                    <option value="all">Tümü</option>
+                                    <option value="admin">Admin</option>
+                                    <option value="user">User</option>
+                                </select>
+                                <small id="adminCount"></small>
+                            </div>
+                            <div class="table-scroll"><table class="advanced-report-table"><thead><tr><th>Kullanıcı</th><th>E-posta</th><th>Rol</th><th>Hesap sayısı</th><th>İşlem sayısı</th><th>Kayıt</th><th>İşlemler</th></tr></thead><tbody id="adminUsersBody"></tbody></table></div>
+                            <p class="hint-text">Rol bilgisi <code>users/{uid}</code> dokümanındaki <code>role</code> alanından okunur (<code>admin</code> / <code>user</code>). İlk admini Firestore Console'dan manuel verin.</p>
+                        </div>
+                    </div>
+                    <div class="admin-tab-panel" data-admin-panel="stats">
+                        <div id="adminStats" class="advanced-report-grid"></div>
+                        <div class="report-card full-width advanced-table-card">
+                            <h3>Kullanıcı bazında dağılım</h3>
+                            <div class="table-scroll"><table class="advanced-report-table"><thead><tr><th>Kullanıcı</th><th>Hesap</th><th>İşlem</th><th>Transfer</th></tr></thead><tbody id="adminBreakdownBody"></tbody></table></div>
+                        </div>
+                        <div class="report-card full-width advanced-table-card">
+                            <h3>Kayıt trendi (son 12 hafta)</h3>
+                            <div class="chart-container"><canvas id="adminSignupChart"></canvas></div>
+                        </div>
+                    </div>
+                    <div class="admin-tab-panel" data-admin-panel="activity">
+                        <div class="report-card full-width">
+                            <h3>Son kayıtlar</h3>
+                            <div id="adminActivityList"></div>
+                        </div>
+                    </div>
+                    <div class="admin-tab-panel" data-admin-panel="system">
+                        <div class="report-card full-width">
+                            <h3>Ortam</h3>
+                            <div id="adminSysInfo"></div>
+                        </div>
+                        <div class="report-card full-width">
+                            <h3>Kurlar</h3>
+                            <div id="adminRatesBox"></div>
+                            <button id="adminRefreshRatesBtn" class="export-btn"><i class="fas fa-sync"></i> Şimdi güncelle</button>
+                        </div>
+                        <div class="report-card full-width">
+                            <h3>Tarayıcı</h3>
+                            <div id="adminBrowserInfo"></div>
+                        </div>
+                        <div class="report-card full-width">
+                            <h3>Tehlikeli işlemler</h3>
+                            <div class="admin-row-actions">
+                                <button id="adminClearCacheBtn" class="danger-btn"><i class="fas fa-trash"></i> Tüm önbelleği temizle</button>
+                                <button id="adminReloadBtn" class="export-btn"><i class="fas fa-sync"></i> Cache'i yenile ve yeniden başlat</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="adminDetailModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="adminDetailTitle">
+                    <div class="modal-content">
+                        <div class="modal-header"><h2 id="adminDetailTitle">Kullanıcı detayı</h2><button id="closeAdminDetail" class="close-btn" aria-label="Kapat">&times;</button></div>
+                        <div id="adminDetailBody"></div>
+                    </div>
                 </div>
             </div>
         </main>
@@ -696,34 +700,9 @@
         </div>
     </div>
 
-    <!-- Receipt Camera Modal -->
-    <div id="receiptCameraModal" class="modal receipt-camera-modal" style="display:none;">
-        <div class="modal-content receipt-camera-content">
-            <div class="receipt-camera-header">
-                <h2><i class="fas fa-camera"></i> Fiş Fotoğrafla</h2>
-                <button id="closeReceiptCamera" class="close-btn">&times;</button>
-            </div>
-            <div class="receipt-camera-body">
-                <video id="receiptCameraVideo" autoplay playsinline></video>
-                <canvas id="receiptCameraCanvas" style="display:none;"></canvas>
-                <div class="receipt-camera-overlay">
-                    <div class="receipt-camera-frame"></div>
-                </div>
-            </div>
-            <div class="receipt-camera-actions">
-                <button type="button" id="receiptSwitchCameraBtn" class="camera-action-btn" title="Kamera Değiştir">
-                    <i class="fas fa-sync-alt"></i>
-                </button>
-                <button type="button" id="receiptCaptureBtn" class="camera-capture-btn" title="Fotoğraf Çek">
-                    <i class="fas fa-circle"></i>
-                </button>
-                <button type="button" id="closeReceiptCameraBtn" class="camera-action-btn" title="Kapat">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-        </div>
-    </div>
     <script src="js/core.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/push.js"></script>
+    <script src="js/admin.js"></script>
 </body>
 </html>

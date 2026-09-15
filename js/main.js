@@ -3,19 +3,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Gizlilik butonu
     document.getElementById('privacyModeBtn').addEventListener('click', togglePrivacyMode);
-    document.getElementById('assistantForm').addEventListener('submit', (event) => {
-        event.preventDefault();
-        const input = document.getElementById('assistantQuestion');
-        askFinanceAssistant(input.value);
-        input.value = '';
-    });
-    document.querySelectorAll('.assistant-suggestion').forEach(button => {
-        button.addEventListener('click', () => {
-            const question = button.dataset.question || '';
-            document.getElementById('assistantQuestion').value = question;
-            askFinanceAssistant(question);
-        });
-    });
 
     // Göz butonu
     document.getElementById('toggleBalanceBtn').addEventListener('click', function(e) {
@@ -23,25 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleBalanceVisibility();
     });
 
-    // Bakiye kartı (özet modal)
+    // Bakiye kartı (özet modal)sonu
     document.getElementById('balanceCard').addEventListener('click', showAccountSummary);
-    document.getElementById('notificationBtn').addEventListener('click', (event) => {
-        event.stopPropagation();
-        const panel = document.getElementById('notificationPanel');
-        panel.hidden = !panel.hidden;
-        updateNotificationsUI();
-    });
-    document.getElementById('clearNotificationsBtn').addEventListener('click', () => {
-        notifications = notifications.map(item => ({ ...item, read: true }));
-        saveNotifications();
-        updateNotificationsUI();
-    });
-    document.getElementById('enableNotificationsBtn').addEventListener('click', requestNotificationPermission);
-    document.getElementById('enableNotificationsSettingBtn').addEventListener('click', requestNotificationPermission);
-    document.addEventListener('click', (event) => {
-        const wrapper = document.querySelector('.notification-wrap');
-        if (wrapper && !wrapper.contains(event.target)) document.getElementById('notificationPanel').hidden = true;
-    });
     document.getElementById('closeAccountSummary').addEventListener('click', () => {
         document.getElementById('accountSummaryModal').style.display = 'none';
     });
@@ -148,13 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
             link.classList.add('active');
             document.getElementById('sidebar').classList.remove('open');
             document.getElementById('sidebarOverlay').classList.remove('show');
-            if (link.dataset.assistantTarget === 'true') {
-                setTimeout(() => {
-                    const assistant = document.getElementById('finance-assistant');
-                    assistant?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    document.getElementById('assistantQuestion')?.focus({ preventScroll: true });
-                }, 80);
-            }
             if (page === 'reports') setTimeout(updateCharts, 500);
         });
     });
@@ -192,6 +155,47 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('sidebarOverlay').addEventListener('click', () => {
         document.getElementById('sidebar').classList.remove('open');
         document.getElementById('sidebarOverlay').classList.remove('show');
+    });
+
+    // Bildirimler: zil paneli + izin + ses ayarı
+    // (Ses için ilk kullanıcı etkileşiminde AudioContext açılır.)
+    document.addEventListener('click', function unlockAudioOnce() {
+        if (typeof unlockNotifAudio === 'function') unlockNotifAudio();
+        document.removeEventListener('click', unlockAudioOnce);
+    });
+    const notificationBtn = document.getElementById('notificationBtn');
+    const notificationPanel = document.getElementById('notificationPanel');
+    if (notificationBtn && notificationPanel) {
+        notificationBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            notificationPanel.hidden = !notificationPanel.hidden;
+        });
+        document.addEventListener('click', (e) => {
+            if (!notificationPanel.hidden && !e.target.closest('.notification-wrap')) notificationPanel.hidden = true;
+        });
+    }
+    const markReadBtn = document.getElementById('clearNotificationsBtn');
+    if (markReadBtn) markReadBtn.addEventListener('click', () => {
+        notifications.forEach(n => n.read = true);
+        saveNotifications();
+        updateNotificationsUI();
+    });
+    const enableBtn = document.getElementById('enableNotificationsBtn');
+    if (enableBtn) enableBtn.addEventListener('click', requestNotificationPermission);
+    const enableSettingBtn = document.getElementById('enableNotificationsSettingBtn');
+    if (enableSettingBtn) enableSettingBtn.addEventListener('click', requestNotificationPermission);
+    const soundToggle = document.getElementById('notifSoundToggle');
+    if (soundToggle) {
+        soundToggle.checked = isNotifSoundOn();
+        soundToggle.addEventListener('change', () => {
+            if (currentUser) localStorage.setItem(`notif-sound-${currentUser.uid}`, soundToggle.checked ? 'on' : 'off');
+            showToast(soundToggle.checked ? 'Bildirim sesi açıldı.' : 'Bildirim sesi kapatıldı.', 'success');
+        });
+    }
+    const testSoundBtn = document.getElementById('testNotifSoundBtn');
+    if (testSoundBtn) testSoundBtn.addEventListener('click', () => {
+        playNotificationSound();
+        showToast('Test sesi çalındı.', 'success');
     });
 
     // Tema
@@ -389,86 +393,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('accountSelect').addEventListener('change', updateAccountRateInfo);
 
-    // KAMERA ENTEGRASYONU
-    let receiptCameraStream = null;
-    let receiptCameraFacingMode = 'environment';
-
-    async function openReceiptCamera() {
-        const modal = document.getElementById('receiptCameraModal');
-        const video = document.getElementById('receiptCameraVideo');
-        if (!modal || !video) return;
-
-        try {
-            receiptCameraStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: receiptCameraFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } }
-            });
-            video.srcObject = receiptCameraStream;
-            modal.style.display = 'flex';
-        } catch (error) {
-            console.error('Kamera erişimi hatası:', error);
-            showToast('Kamera erişimi reddedildi veya kullanılamıyor. Lütfen izin verin.', 'error');
-        }
-    }
-
-    function closeReceiptCamera() {
-        const modal = document.getElementById('receiptCameraModal');
-        const video = document.getElementById('receiptCameraVideo');
-        if (receiptCameraStream) {
-            receiptCameraStream.getTracks().forEach(track => track.stop());
-            receiptCameraStream = null;
-        }
-        if (video) video.srcObject = null;
-        if (modal) modal.style.display = 'none';
-    }
-
-    async function switchReceiptCamera() {
-        receiptCameraFacingMode = receiptCameraFacingMode === 'environment' ? 'user' : 'environment';
-        closeReceiptCamera();
-        await openReceiptCamera();
-    }
-
-    function captureReceiptPhoto() {
-        const video = document.getElementById('receiptCameraVideo');
-        const canvas = document.getElementById('receiptCameraCanvas');
-        if (!video || !canvas) return;
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0);
-
-        canvas.toBlob(async (blob) => {
-            if (!blob) return;
-            closeReceiptCamera();
-            const file = new File([blob], `receipt_${Date.now()}.jpg`, { type: 'image/jpeg' });
-            const input = document.getElementById('receiptFile');
-            const dt = new DataTransfer();
-            dt.items.add(file);
-            input.files = dt.files;
-            handleReceiptUpload(input);
-        }, 'image/jpeg', 0.92);
-    }
-
-    // Kamera event listener'ları
-    const openReceiptCameraBtn = document.getElementById('openReceiptCameraBtn');
-    if (openReceiptCameraBtn) openReceiptCameraBtn.addEventListener('click', openReceiptCamera);
-
-    const closeReceiptCameraBtn = document.getElementById('closeReceiptCamera');
-    if (closeReceiptCameraBtn) closeReceiptCameraBtn.addEventListener('click', closeReceiptCamera);
-
-    const receiptCaptureBtn = document.getElementById('receiptCaptureBtn');
-    if (receiptCaptureBtn) receiptCaptureBtn.addEventListener('click', captureReceiptPhoto);
-
-    const receiptSwitchCameraBtn = document.getElementById('receiptSwitchCameraBtn');
-    if (receiptSwitchCameraBtn) receiptSwitchCameraBtn.addEventListener('click', switchReceiptCamera);
-
-    const receiptCameraModal = document.getElementById('receiptCameraModal');
-    if (receiptCameraModal) {
-        receiptCameraModal.addEventListener('click', (e) => {
-            if (e.target.id === 'receiptCameraModal') closeReceiptCamera();
-        });
-    }
-
     // Kategoriler
     const categories = {
         expense: ['🍔 Yemek','🚗 Ulaşım','🏠 Kira','💡 Faturalar','🛒 Market','🎮 Eğlence','💊 Sağlık','📚 Eğitim','👕 Giyim','📱 Teknoloji','🎁 Hediyeler','📋 Diğer'],
@@ -479,8 +403,37 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!select) return;
         select.innerHTML = '<option value="">Kategori Seçin</option>';
         categories[selectedType].forEach(category => { select.innerHTML += `<option value="${category}">${category}</option>`; });
+        const budgetSelect = document.getElementById('budgetCategory');
+        if (budgetSelect && !budgetSelect.dataset.filled) {
+            budgetSelect.innerHTML = '<option value="">Kategori Seçin</option>';
+            categories.expense.forEach(category => { budgetSelect.innerHTML += `<option value="${category}">${category}</option>`; });
+            budgetSelect.dataset.filled = 'true';
+        }
     }
     updateCategorySelect();
+
+    // Bütçe formu
+    const budgetMonthInput = document.getElementById('budgetMonth');
+    if (budgetMonthInput && !budgetMonthInput.value) budgetMonthInput.value = currentMonth;
+    document.getElementById('budgetForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+        const category = document.getElementById('budgetCategory').value;
+        const limit = parseFloat(document.getElementById('budgetLimit').value);
+        const month = document.getElementById('budgetMonth').value || currentMonth;
+        if (!category || !(limit > 0)) { showToast('Kategori ve limit girin.', 'error'); return; }
+        try {
+            await db.collection('users').doc(currentUser.uid).collection('budgets').add({
+                category, limit, month,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            document.getElementById('budgetForm').reset();
+            if (budgetMonthInput) budgetMonthInput.value = currentMonth;
+            showToast('Bütçe kaydedildi!', 'success');
+            await loadBudgets();
+            updateBudgetsUI();
+        } catch (error) { showToast('Bütçe kaydedilemedi: ' + error.message, 'error'); }
+    });
 
     // İşlem formu
     document.getElementById('transactionForm').addEventListener('submit', async (e) => {
@@ -563,7 +516,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     installmentInterestAmount,
                     installmentTotal,
                     installmentAmount,
-                    receiptBase64: oldTransaction.receiptBase64 || null,
                     recurringId: recurringRef ? recurringRef.id : firebase.firestore.FieldValue.delete(),
                     isRecurringSource: Boolean(recurringRef)
                 };
@@ -679,7 +631,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 installmentInterestAmount,
                 installmentTotal,
                 installmentAmount,
-                receiptBase64: receiptBase64 || null,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 isRecurringSource: isRecurring
             });
@@ -742,8 +693,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('creditInstallmentDetails').hidden = true;
             document.getElementById('creditCardDetails').hidden = true;
             updateTransactionPurchaseFields();
-            document.getElementById('receiptPreview').innerHTML = '';
-            receiptBase64 = null;
             showToast('İşlem kaydedildi!', 'success');
             await loadUserData();
         } catch (error) { showToast('İşlem hatası: ' + error.message, 'error'); }
@@ -810,13 +759,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('filterType').addEventListener('change', updateTransactionsUI);
     document.getElementById('filterAccount').addEventListener('change', updateTransactionsUI);
 
-    // Para birimi
-    document.getElementById('currencySetting').addEventListener('change', async (e) => {
-        currentCurrency = e.target.value;
-        await saveSettings();
-        showToast('Para birimi güncellendi!', 'success');
-    });
-
     // Yeni ay başlat
     document.getElementById('startNewMonth').addEventListener('click', async () => {
         if (!confirm('Yeni ay başlatılacak. Emin misiniz?')) return;
@@ -836,31 +778,6 @@ document.addEventListener('DOMContentLoaded', () => {
         importData(file);
     });
     document.getElementById('clearData').addEventListener('click', clearAllData);
-    document.getElementById('saveRateAlerts').addEventListener('click', () => {
-        if (!currentUser) return;
-        const settings = loadRateAlertSettings();
-        let invalidLimit = false;
-        rateAlertCurrencies.forEach(currency => {
-            const lowerValue = document.getElementById(`alertLower${currency}`).value.trim();
-            const upperValue = document.getElementById(`alertUpper${currency}`).value.trim();
-            const lower = lowerValue === '' ? null : Number(lowerValue);
-            const upper = upperValue === '' ? null : Number(upperValue);
-            if ((lower !== null && (!Number.isFinite(lower) || lower < 0)) || (upper !== null && (!Number.isFinite(upper) || upper < 0)) || (lower !== null && upper !== null && lower >= upper)) {
-                invalidLimit = true;
-                return;
-            }
-            settings.limits[currency] = { lower, upper };
-            settings.states[currency] = 'normal';
-        });
-        if (invalidLimit) {
-            showToast('Kur limitleri geçerli ve sıfırdan büyük olmalı.', 'error');
-            return;
-        }
-        settings.frequencyHours = Number(document.getElementById('rateAlertFrequency').value) || 6;
-        saveRateAlertSettings(settings);
-        showToast('Kur bildirimleri kaydedildi.', 'success');
-        checkRateAlerts();
-    });
     document.getElementById('saveSecurityPin').addEventListener('click', async () => {
         const input = document.getElementById('securityPin');
         const pin = input.value.trim();
@@ -933,24 +850,6 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('Hedef eklendi!', 'success');
             await loadUserData();
         } catch (error) { showToast('Hedef eklenirken hata: ' + error.message, 'error'); }
-    });
-
-    // Tema renkleri
-    document.querySelectorAll('.theme-swatch').forEach(swatch => swatch.addEventListener('click', async () => {
-        applyThemeColor(swatch.dataset.colorValue);
-        await saveSettings();
-        showToast('Renk teması güncellendi!', 'success');
-    }));
-    document.getElementById('applyRgbColor').addEventListener('click', async () => {
-        const values = ['themeRed', 'themeGreen', 'themeBlue'].map(id => Number(document.getElementById(id).value));
-        if (values.some(value => !Number.isInteger(value) || value < 0 || value > 255)) {
-            showToast('RGB değerleri 0 ile 255 arasında olmalı.', 'error');
-            return;
-        }
-        const hexColor = `#${values.map(value => value.toString(16).padStart(2, '0')).join('')}`;
-        applyThemeColor(hexColor);
-        await saveSettings();
-        showToast('Özel RGB teması uygulandı!', 'success');
     });
 
     // Tarihleri ayarla
