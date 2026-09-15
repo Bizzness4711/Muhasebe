@@ -42,7 +42,7 @@ async function main() {
             if (r.active === false || r.nextDate !== tomorrowStr) continue;
             const id = `rec-${doc.id}-${r.nextDate}`;
             if (await isLogged(id)) continue;
-            bodies.push(`Yarın: ${r.description || r.category || 'Tekrarlayan işlem'} (₺${Number(r.amount || 0).toFixed(2)})`);
+            bodies.push({ title: '⏰ Yarın vade', body: `${r.description || r.category || 'Tekrarlayan işlem'} (₺${Number(r.amount || 0).toFixed(2)})` });
             batch.set(logRef(id), { at: admin.firestore.FieldValue.serverTimestamp() });
         }
 
@@ -64,7 +64,7 @@ async function main() {
                 if (spent >= limit) {
                     const id = `bud-${month}-${b.category}-over`;
                     if (await isLogged(id)) continue;
-                    bodies.push(`${b.category} bütçesi aşıldı: ₺${spent.toFixed(2)} / ₺${limit.toFixed(2)}.`);
+                    bodies.push({ title: '⚠️ Bütçe aşıldı', body: `${b.category}: ₺${spent.toFixed(2)} / ₺${limit.toFixed(2)}.` });
                     batch.set(logRef(id), { at: admin.firestore.FieldValue.serverTimestamp() });
                 }
             }
@@ -77,14 +77,17 @@ async function main() {
             if (Number(g.amount) > 0 && Number(g.current) >= Number(g.amount)) {
                 const id = `goal-${doc.id}-100`;
                 if (await isLogged(id)) continue;
-                bodies.push(`Tebrikler! ${g.name} hedefine ulaştın.`);
+                bodies.push({ title: '🎉 Hedef tamamlandı', body: `${g.name} hedefine ulaştın!` });
                 batch.set(logRef(id), { at: admin.firestore.FieldValue.serverTimestamp() });
             }
         }
 
         if (!bodies.length) continue;
-        const text = bodies.slice(0, 3).join('\n');
-        const res = await messaging.sendEachForMulticast({ tokens, notification: { title: 'Finora', body: text } });
+        // Tek uyarıda kendi başlığı, çok uyarıda özet başlık + satır başına tip.
+        const notification = bodies.length === 1
+            ? { title: bodies[0].title, body: bodies[0].body }
+            : { title: `Finora (${bodies.length} bildirim)`, body: bodies.slice(0, 3).map(m => `${m.title} — ${m.body}`).join('\n') };
+        const res = await messaging.sendEachForMulticast({ tokens, notification });
         console.log(`FCM sonuç: ${res.successCount} başarılı, ${res.failureCount} hatalı`);
         // Geçersiz tokenları temizle, diğer hataları logla
         // Geçersiz tokenları temizle

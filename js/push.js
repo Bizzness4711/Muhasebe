@@ -24,8 +24,9 @@ async function initPush() {
         }
         // Uygulama açıkken gelen push: bildirim merkezine düşer + ses çalar.
         messaging.onMessage((payload) => {
+            const title = (payload && payload.notification && payload.notification.title) || 'Finora';
             const body = (payload && payload.notification && payload.notification.body) || 'Yeni bildiriminiz var.';
-            if (typeof addNotification === 'function') addNotification(`push-${Date.now()}`, body, 'fa-bell');
+            if (typeof addNotification === 'function') addNotification(`push-${Date.now()}`, body, 'fa-bell', title);
             else if (typeof playNotificationSound === 'function') playNotificationSound();
         });
         if (typeof messaging.onTokenRefresh === 'function') {

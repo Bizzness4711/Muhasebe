@@ -125,14 +125,14 @@ function playNotificationSound() {
     }
 }
 
-function addNotification(id, message, icon = 'fa-bell') {
+function addNotification(id, message, icon = 'fa-bell', title = 'Finora') {
     if (notifications.some(item => item.id === id)) return;
-    notifications.unshift({ id, message, icon, read: false, createdAt: new Date().toISOString() });
+    notifications.unshift({ id, message, icon, title, read: false, createdAt: new Date().toISOString() });
     saveNotifications();
     updateNotificationsUI();
     playNotificationSound();
     if ('Notification' in window && Notification.permission === 'granted') {
-        try { new Notification('Finora', { body: message }); } catch (e) { console.warn('Masaüstü bildirimi gösterilemedi.', e); }
+        try { new Notification(title, { body: message, icon: 'icons/logo.svg' }); } catch (e) { console.warn('Masaüstü bildirimi gösterilemedi.', e); }
     }
 }
 
@@ -144,7 +144,7 @@ function updateNotificationsUI() {
     count.textContent = unread.length > 99 ? '99+' : String(unread.length);
     count.hidden = unread.length === 0;
     list.innerHTML = notifications.length
-        ? notifications.slice(0, 12).map(item => `<div class="notification-item"><i class="fas ${escapeHtml(item.icon)}"></i><span>${escapeHtml(item.message)}</span></div>`).join('')
+        ? notifications.slice(0, 12).map(item => `<div class="notification-item"><i class="fas ${escapeHtml(item.icon)}"></i><span><strong>${escapeHtml(item.title || 'Finora')}</strong> · ${escapeHtml(item.message)}</span></div>`).join('')
         : '<div class="notification-empty">Yeni bildiriminiz yok.</div>';
 }
 
