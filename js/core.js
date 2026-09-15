@@ -2197,53 +2197,6 @@ async function clearAllData() {
     } catch (e) { showToast('Silme hatası: ' + e.message, 'error'); }
 }
 
-function exportData() {
-    const data = { settings: { currency: 'TRY', currentMonth: currentMonth, selectedAccounts: Array.from(selectedAccounts), themeColor: '#9C27B0' }, accounts, transactions, transfers, recurringTransactions, goals };
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data, null, 2));
-    const link = document.createElement('a');
-    link.setAttribute('href', dataUri);
-    link.setAttribute('download', `finance-data-${new Date().toISOString().split('T')[0]}.json`);
-    link.click();
-    showToast('Veriler dışa aktarıldı!', 'success');
-}
-
-async function importData(file) {
-    if (!file || !currentUser) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        try {
-            const data = JSON.parse(e.target.result);
-            if (data.settings) {
-                currentCurrency = 'TRY';
-                if (data.settings.currentMonth) currentMonth = data.settings.currentMonth;
-                if (data.settings.selectedAccounts) selectedAccounts = new Set(data.settings.selectedAccounts);
-                currentThemeColor = '#9C27B0';
-                applyThemeColor();
-                await db.collection('users').doc(currentUser.uid).set({ currency: 'TRY', currentMonth: currentMonth, selectedAccounts: Array.from(selectedAccounts), themeColor: '#9C27B0' }, { merge: true });
-            }
-            // Dışa aktarılan ID'leri koru; aksi halde transaction.accountId ve
-            // recurringId referansları yeni hesaplara bağlanamıyordu.
-            const importCollection = async (name, items) => {
-                if (!Array.isArray(items)) return;
-                for (const item of items) {
-                    const { id, ...rest } = item || {};
-                    const ref = id && typeof id === 'string' ? db.collection('users').doc(currentUser.uid).collection(name).doc(id) : db.collection('users').doc(currentUser.uid).collection(name).doc();
-                    await ref.set(rest);
-                }
-            };
-            await importCollection('accounts', data.accounts);
-            await importCollection('transactions', data.transactions);
-            await importCollection('transfers', data.transfers);
-            await importCollection('recurringTransactions', data.recurringTransactions);
-            await importCollection('goals', data.goals);
-            await loadUserData();
-            showToast('Veriler başarıyla içe aktarıldı!', 'success');
-        } catch (error) { showToast('Dosya okunamadı: ' + error.message, 'error'); }
-    };
-    reader.readAsText(file);
-}
-
-
 
 // GİZLİLİK MODU: Kullanıcı belgesinde saklanır ve tüm açık tarayıcılara eşitlenir.
 async function togglePrivacyMode() {

@@ -19,7 +19,7 @@
   --shadow: 0 8px 24px rgba(31, 34, 63, 0.06);
   --shadow-lg: 0 18px 48px rgba(31, 34, 63, 0.14);
   --sidebar-width: 248px;
-  --header-height: 72px;
+  --header-height: 68px;
   --radius: 16px;
   --transition: all 0.2s ease;
 }
@@ -1449,7 +1449,7 @@ select:focus-visible {
 }
 @media (max-width: 700px) {
   :root {
-    --header-height: 62px;
+    --header-height: 60px;
   }
   .header {
     left: 0;
@@ -1980,7 +1980,7 @@ select option {
   content: "";
   position: fixed;
   z-index: -1;
-  top: 72px;
+  top: var(--header-height);
   right: 0;
   width: 42vw;
   height: 300px;
@@ -3710,5 +3710,579 @@ select option {
     position: fixed;
     top: var(--header-height);
     right: 10px;
+  }
+}
+
+/* ============================================================
+   MODERN FINTECH LAYER (v2026.09-ui28)
+   - Yeni token sistemi; eski değişkenler alias olarak korunur.
+   - Sınıf/ID isimleri değişmedi; yalnızca görünüm katmanı.
+   - ============================================================ */
+
+/* 1. Tasarım token'ları */
+:root {
+  --primary: #4f46c7;
+  --primary-hover: #4338b8;
+  --secondary: #3b82f6;
+  --background: #f4f5fb;
+  --surface: #ffffff;
+  --surface-2: #eef0f8;
+  --text: #1e2235;
+  --muted: #6e7190;
+  --success: #159a72;
+  --warning: #d08a25;
+  --danger: #d95768;
+  --border: #e4e6f0;
+  --shadow-sm: 0 1px 2px rgba(23, 25, 60, 0.05);
+  --shadow: 0 8px 24px rgba(31, 34, 63, 0.06);
+  --shadow-md: 0 12px 32px rgba(31, 34, 63, 0.1);
+  --shadow-lg: 0 18px 48px rgba(31, 34, 63, 0.14);
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  /* Eski isimler -> yeni sistem (sıfır kırılma) */
+  --primary-color: var(--primary);
+  --primary-dark: var(--primary-hover);
+  --primary-rgb: 79, 70, 199;
+  --income-color: var(--success);
+  --expense-color: var(--danger);
+  --warning-color: var(--warning);
+  --bg-color: var(--background);
+  --surface-color: var(--surface);
+  --surface-muted: var(--surface-2);
+  --text-color: var(--text);
+  --text-secondary: var(--muted);
+  --border-color: var(--border);
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  --primary: #7c74f0;
+  --primary-hover: #8d86f5;
+  --secondary: #60a5fa;
+  --background: #141524;
+  --surface: #1f2138;
+  --surface-2: #292b45;
+  --text: #f2f1fa;
+  --muted: #a2a3bd;
+  --border: #353752;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.4);
+  --primary-rgb: 124, 116, 240;
+  color-scheme: dark;
+}
+
+/* 2. Taban cilası */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+body {
+  background: var(--background);
+  letter-spacing: -0.005em;
+}
+h1, h2, h3 {
+  text-wrap: balance;
+}
+p, small, .transaction-subtitle-modern {
+  text-wrap: pretty;
+}
+.balance-amount,
+.stat-card p,
+.transaction-amount-modern,
+.advanced-stat-card strong,
+.currency-value,
+.account-card-balance {
+  font-variant-numeric: tabular-nums;
+}
+button, a {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(79, 70, 199, 0.15);
+}
+.skip-link {
+  position: fixed;
+  top: -60px;
+  left: 16px;
+  z-index: 7000;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  transition: top 0.18s var(--ease);
+}
+.skip-link:focus {
+  top: 12px;
+}
+.main-content {
+  padding-bottom: calc(50px + env(safe-area-inset-bottom));
+}
+.transactions-modern,
+.accounts-list,
+.goals-list {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}
+
+/* 3. Header */
+.header {
+  height: 68px;
+  padding: 0 28px;
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+[data-theme="dark"] .header {
+  background: rgba(31, 33, 56, 0.9);
+}
+.header h1 {
+  font-size: 1.15rem;
+  font-weight: 750;
+}
+.menu-btn,
+.notification-btn,
+.privacy-btn,
+.logout-btn,
+.theme-btn {
+  min-width: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.menu-btn:hover,
+.notification-btn:hover,
+.privacy-btn:hover,
+.logout-btn:hover,
+.theme-btn:hover {
+  background: var(--surface-2);
+}
+.header-action-btn {
+  min-height: 42px;
+  border-radius: 12px;
+  font-weight: 700;
+  box-shadow: 0 6px 16px rgba(79, 70, 199, 0.28);
+  transition: transform 0.15s var(--ease), background-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.header-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(79, 70, 199, 0.32);
+}
+.header-action-btn:active {
+  transform: scale(0.97);
+}
+.user-avatar {
+  font-weight: 750;
+  background: rgba(var(--primary-rgb), 0.12);
+}
+
+/* 4. Sidebar */
+.sidebar {
+  padding: 22px 14px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.sidebar:before {
+  width: 36px;
+  margin: 2px 14px 40px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  box-shadow: none;
+}
+.sidebar-link {
+  border-radius: 12px;
+  font-weight: 600;
+  min-height: 44px;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.sidebar-link i {
+  font-size: 1rem;
+  opacity: 0.85;
+}
+.sidebar-link.active {
+  background: rgba(var(--primary-rgb), 0.1);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+/* 5. Özet kartları */
+.stats-grid {
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+}
+.stat-card {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+  border-top-width: 3px;
+  padding: 16px;
+  transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.stat-card h3 {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.stat-card p {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.stat-card i {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  right: 14px;
+  bottom: 14px;
+  opacity: 1;
+}
+.stat-card.income i { background: rgba(21, 154, 114, 0.12); color: var(--success); }
+.stat-card.expense i { background: rgba(217, 87, 104, 0.12); color: var(--danger); }
+.stat-card.savings i { background: rgba(var(--primary-rgb), 0.12); color: var(--primary); }
+.stat-card.installment i { background: rgba(208, 138, 37, 0.14); color: var(--warning); }
+.stat-card.net i { background: rgba(59, 130, 246, 0.12); color: var(--secondary); }
+.stat-card.accounts i { background: rgba(124, 108, 255, 0.14); color: #7c6cff; }
+.stat-card.net { border-top-color: var(--secondary); }
+.stat-card.accounts { border-top-color: #7c6cff; }
+.stat-card .profit { color: var(--success); }
+.stat-card .loss { color: var(--danger); }
+
+/* 6. Bakiye kartları */
+.balance-card {
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, #4c43b8 0%, #6d63e8 55%, #8b7ff0 100%);
+  box-shadow: 0 14px 30px rgba(76, 67, 184, 0.3);
+}
+.balance-card.savings-card {
+  background: linear-gradient(135deg, #0e7490 0%, #159a72 60%, #4cc38a 100%);
+  box-shadow: 0 14px 30px rgba(21, 154, 114, 0.28);
+}
+.balance-amount {
+  font-size: 2.1rem;
+}
+
+/* 7. Buton sistemi */
+.add-btn,
+.submit-btn,
+.auth-btn,
+.export-btn {
+  min-height: 42px;
+  border-radius: 12px;
+  font-weight: 700;
+  transition: transform 0.15s var(--ease), background-color 0.15s var(--ease), box-shadow 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.add-btn:active,
+.submit-btn:active,
+.auth-btn:active,
+.export-btn:active,
+.header-action-btn:active {
+  transform: scale(0.97);
+}
+.cancel-btn {
+  min-height: 42px;
+  border-radius: 12px;
+  font-weight: 650;
+  transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.danger-btn {
+  min-height: 42px;
+  border-radius: 12px;
+  font-weight: 700;
+  transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.admin-mini-btn {
+  min-height: 34px;
+  border-radius: 9px;
+  font-weight: 650;
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+.edit-transaction-btn,
+.delete-btn,
+.delete-account-btn,
+.delete-goal-btn,
+.edit-account-btn {
+  min-width: 34px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.edit-transaction-btn:hover,
+.edit-account-btn:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+}
+.delete-btn:hover,
+.delete-account-btn:hover,
+.delete-goal-btn:hover {
+  background: rgba(217, 87, 104, 0.1);
+}
+
+/* 8. Formlar */
+.form-group input,
+.form-group select,
+.auth-form input,
+.security-setting-row input,
+.setting-item > select,
+.admin-toolbar input[type="search"] {
+  min-height: 44px;
+  border-radius: 11px;
+  border: 1.5px solid var(--border);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+.form-group label {
+  color: var(--text);
+  font-size: 0.8rem;
+}
+.form-group input::placeholder {
+  color: var(--muted);
+  opacity: 0.8;
+}
+select {
+  background-color: var(--surface-2);
+  color: var(--text);
+}
+.type-btn {
+  min-height: 46px;
+  border-radius: 11px;
+  border-width: 1.5px;
+  font-weight: 700;
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+.checkbox-label {
+  color: var(--text);
+  cursor: pointer;
+}
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}
+
+/* 9. Modallar */
+.modal-content {
+  border-radius: var(--radius-lg);
+  overscroll-behavior: contain;
+  animation: modalIn 0.22s var(--ease);
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.modal-header h2 {
+  text-wrap: balance;
+}
+.close-btn {
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 10px;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.close-btn:hover {
+  background: rgba(217, 87, 104, 0.1);
+}
+.account-summary-item,
+.installment-summary-item,
+.calendar-detail-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.account-summary-item:last-child,
+.installment-summary-item:last-child {
+  border-bottom: 0;
+}
+
+/* 10. Tablolar */
+.advanced-report-table thead,
+.profit-loss-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.advanced-report-table td,
+.profit-loss-table td {
+  font-variant-numeric: tabular-nums;
+}
+.report-card h3,
+.advanced-table-card h3 {
+  text-wrap: balance;
+}
+
+/* 11. İşlem / hesap / hedef kartları */
+.transaction-card-modern,
+.account-card,
+.goal-card,
+.budget-card {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.transaction-card-modern {
+  transition: transform 0.15s var(--ease), border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.transaction-card-modern:hover {
+  box-shadow: var(--shadow-md);
+}
+.transaction-title-modern,
+.account-card h3,
+.goal-card h3 {
+  text-wrap: pretty;
+}
+.account-card {
+  border-top-width: 4px;
+}
+.goal-progress-bar {
+  height: 9px;
+}
+
+/* 12. Bildirim paneli + toast */
+.notification-panel {
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  overscroll-behavior: contain;
+}
+.notification-item span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* İndirme format menüsü */
+.download-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.download-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 170px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-color);
+  box-shadow: var(--shadow-lg);
+}
+.download-menu[hidden] {
+  display: none;
+}
+.download-menu .admin-mini-btn {
+  justify-content: flex-start;
+  width: 100%;
+}
+.toast {
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  font-weight: 600;
+}
+
+/* 13. Auth ekranı */
+.auth-shell {
+  border-radius: 26px;
+}
+.auth-btn {
+  border-radius: 12px;
+}
+.google-btn {
+  min-height: 46px;
+  border-radius: 12px;
+  border-width: 1.5px;
+  font-weight: 650;
+  transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+/* 14. Admin sekmeleri */
+.admin-tab {
+  min-height: 40px;
+  font-weight: 650;
+  transition: color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+/* 15. Tablet ara kırılım */
+@media (max-width: 1100px) {
+  .stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .exchange-rates-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .advanced-report-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .report-container {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* 16. Küçük ekran iyileştirmeleri */
+@media (max-width: 700px) {
+  .header {
+    height: 60px;
+    padding: 0 12px;
+  }
+  .main-content {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .stat-card p {
+    font-size: 1rem;
+  }
+  .stat-card i {
+    display: none;
+  }
+  .balance-cards {
+    grid-template-columns: 1fr;
+  }
+  .page-header {
+    flex-wrap: wrap;
+  }
+  .form-actions {
+    flex-direction: column;
+  }
+  .form-actions .submit-btn,
+  .form-actions .cancel-btn {
+    width: 100%;
+  }
+  .modal-content {
+    border-radius: 18px;
+  }
+  .transaction-card-modern {
+    gap: 10px;
+    padding: 12px;
+  }
+}
+
+/* 17. Azaltılmış hareket */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  html {
+    scroll-behavior: auto;
   }
 }

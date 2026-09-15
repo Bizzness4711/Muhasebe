@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f4f5fb" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#171827" media="(prefers-color-scheme: dark)">
     <title>Finora</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%236256d9'/%3E%3Cpath d='M19 15h29v9H28v8h17v8H28v17h-9z' fill='white'/%3E%3Ccircle cx='49' cy='47' r='7' fill='%23c06cff'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css?v=20260911-ui27">
@@ -21,6 +23,7 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
+    <a href="#dashboard" class="skip-link">İçeriğe atla</a>
     <!-- Login Modal -->
     <div id="loginModal" class="modal auth-modal">
         <div class="auth-shell">
@@ -66,7 +69,7 @@
     <div id="app" class="app-container" style="display:none;">
         <header class="header">
             <div class="header-left">
-                <button id="menuBtn" class="menu-btn"><i class="fas fa-bars"></i></button>
+                <button id="menuBtn" class="menu-btn" aria-label="Menüyü aç"><i class="fas fa-bars"></i></button>
                 <span class="finora-logo-mark header-logo-mark" aria-hidden="true">F</span>
                 <h1>Finora</h1>
             </div>
@@ -84,15 +87,15 @@
                         <button id="enableNotificationsBtn" class="notification-permission-btn" type="button">Masaüstü bildirimlerini aç</button>
                     </div>
                 </div>
-                <button id="privacyModeBtn" class="privacy-btn" title="Gizlilik Modu">
+                <button id="privacyModeBtn" class="privacy-btn" title="Gizlilik Modu" aria-label="Gizlilik modunu aç/kapat">
                     <i class="fas fa-eye-slash"></i>
                 </button>
                 <div class="user-info">
                     <div class="user-avatar" id="userAvatar"><i class="fas fa-user"></i></div>
                     <span id="userName" class="user-name"></span>
-                    <button id="logoutBtn" class="logout-btn"><i class="fas fa-sign-out-alt"></i></button>
+                    <button id="logoutBtn" class="logout-btn" aria-label="Çıkış yap"><i class="fas fa-sign-out-alt"></i></button>
                 </div>
-                <button id="themeBtn" class="theme-btn"><i class="fas fa-moon"></i></button>
+                <button id="themeBtn" class="theme-btn" aria-label="Temayı değiştir"><i class="fas fa-moon"></i></button>
             </div>
         </header>
 
@@ -143,7 +146,7 @@
                         <h2>Toplam Bakiye</h2>
                         <p class="balance-amount" id="totalBalance">₺0.00</p>
                     </div>
-                    <button id="toggleBalanceBtn" class="eye-btn" style="display: none;" title="Bakiyeyi Göster/Gizle">
+                    <button id="toggleBalanceBtn" class="eye-btn" style="display: none;" title="Bakiyeyi Göster/Gizle" aria-label="Bakiyeyi göster/gizle">
                         <i class="fas fa-eye"></i>
                     </button>
                 </div>
@@ -160,6 +163,8 @@
                     <div class="stat-card income"><h3>Bu Ay Gelir</h3><p id="totalIncome">₺0.00</p><i class="fas fa-arrow-up"></i></div>
                     <div class="stat-card expense"><h3>Bu Ay Masraf</h3><p id="totalExpense">₺0.00</p><i class="fas fa-arrow-down"></i></div>
                     <div class="stat-card savings"><h3>Tasarruf</h3><p id="savingsRate">%0</p><i class="fas fa-piggy-bank"></i></div>
+                    <div class="stat-card net"><h3>Net Durum</h3><p id="statNet">₺0.00</p><i class="fas fa-scale-balanced"></i></div>
+                    <div class="stat-card accounts"><h3>Hesap Sayısı</h3><p id="statAccountCount">0</p><i class="fas fa-wallet"></i></div>
                     <div class="stat-card installment stat-card-action" id="upcomingInstallmentsCard" role="button" tabindex="0" aria-label="Bu ay gelecek taksitleri görüntüle"><h3>Bu Ay Gelecek Taksit</h3><p id="upcomingInstallments">₺0.00</p><small>Kredi kartlarına göre görüntüle</small><i class="fas fa-calendar-check"></i></div>
                 </div>
 
@@ -255,8 +260,13 @@
                     </div>
                 </div>
                 <div class="admin-toolbar">
-                    <button id="exportCsvBtn" class="admin-mini-btn" type="button"><i class="fas fa-file-csv"></i> CSV indir</button>
-                    <button id="exportXlsxBtn" class="admin-mini-btn" type="button"><i class="fas fa-file-excel"></i> Excel indir</button>
+                    <span class="download-wrap">
+                        <button id="downloadBtn" class="admin-mini-btn" type="button" aria-haspopup="true" aria-expanded="false"><i class="fas fa-download"></i> İndir</button>
+                        <span id="downloadMenu" class="download-menu" hidden>
+                            <button class="admin-mini-btn" type="button" data-format="xlsx"><i class="fas fa-file-excel"></i> Excel (.xlsx)</button>
+                            <button class="admin-mini-btn" type="button" data-format="csv"><i class="fas fa-file-csv"></i> CSV</button>
+                        </span>
+                    </span>
                     <button id="importTemplateBtn" class="admin-mini-btn" type="button"><i class="fas fa-table"></i> Şablon indir</button>
                     <label for="importTableFile" class="admin-mini-btn" style="cursor:pointer;"><i class="fas fa-upload"></i> CSV/Excel yükle</label>
                     <input type="file" id="importTableFile" accept=".csv,.xlsx,.xls" hidden>
@@ -598,15 +608,6 @@
                         <small class="hint-text">PIN, cihazınızda güvenli özet olarak saklanır.</small>
                     </div>
                     <div class="setting-item"><label>Dönem Sistemi</label><button id="startNewMonth" class="export-btn"><i class="fas fa-play"></i> Yeni Ay Başlat</button></div>
-                    <div class="setting-item"><label>Verileri Dışa Aktar</label><button id="exportData" class="export-btn"><i class="fas fa-download"></i> JSON İndir</button></div>
-                    <div class="setting-item">
-                        <label for="importData">Verileri İçe Aktar</label>
-                        <div class="file-upload-box">
-                            <input type="file" id="importData" accept=".json,application/json" class="file-input" aria-describedby="importFileName">
-                            <label for="importData" class="file-upload-trigger"><i class="fas fa-cloud-arrow-up"></i><span>JSON dosyası seç</span></label>
-                            <span id="importFileName" class="file-name">Henüz dosya seçilmedi</span>
-                        </div>
-                    </div>
                     <div class="setting-item">
                         <label>Bildirimler</label>
                         <button id="enableNotificationsSettingBtn" class="export-btn" type="button"><i class="fas fa-bell"></i> Masaüstü bildirimlerini aç</button>

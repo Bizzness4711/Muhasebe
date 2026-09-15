@@ -262,8 +262,37 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('exportCsvBtn')?.addEventListener('click', downloadCSV);
-    document.getElementById('exportXlsxBtn')?.addEventListener('click', downloadXLSX);
+    const downloadBtn = document.getElementById('downloadBtn');
+    const downloadMenu = document.getElementById('downloadMenu');
+    if (downloadBtn && downloadMenu) {
+        downloadBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const open = downloadMenu.hidden;
+            downloadMenu.hidden = !open;
+            downloadBtn.setAttribute('aria-expanded', String(open));
+        });
+        downloadMenu.querySelectorAll('[data-format]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                downloadMenu.hidden = true;
+                downloadBtn.setAttribute('aria-expanded', 'false');
+                if (btn.dataset.format === 'xlsx') downloadXLSX();
+                else downloadCSV();
+            });
+        });
+        document.addEventListener('click', (e) => {
+            if (!downloadMenu.hidden && !e.target.closest('.download-wrap')) {
+                downloadMenu.hidden = true;
+                downloadBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !downloadMenu.hidden) {
+                downloadMenu.hidden = true;
+                downloadBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
     document.getElementById('importTemplateBtn')?.addEventListener('click', downloadTemplate);
     document.getElementById('importTableFile')?.addEventListener('change', e => importTableFile(e.target.files[0]));
   });

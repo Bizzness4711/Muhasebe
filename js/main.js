@@ -772,12 +772,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Dışa aktar, içe aktar, sil
-    document.getElementById('exportData').addEventListener('click', exportData);
-    document.getElementById('importData').addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        document.getElementById('importFileName').textContent = file ? file.name : 'Henüz dosya seçilmedi';
-        importData(file);
-    });
     document.getElementById('clearData').addEventListener('click', clearAllData);
     document.getElementById('saveSecurityPin').addEventListener('click', async () => {
         const input = document.getElementById('securityPin');
