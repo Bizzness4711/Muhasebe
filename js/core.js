@@ -54,6 +54,7 @@ function getNextRecurringDate(dateString, frequency) {
 function showToast(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
+    toast.setAttribute('role', 'status');
     const icon = document.createElement('i');
     icon.className = `fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}`;
     const text = document.createElement('span');
@@ -64,27 +65,60 @@ function showToast(message, type = 'success') {
     setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
 }
 
-// Bildirimler: kullanıcı bazlı localStorage'da saklanır (en fazla 40 adet).
+// Bildirimler: users/{uid}/notifications koleksiyonunda saklanır (en fazla 40).
+// Her pazartesi 00:00'dan eski kayıtlar girişte otomatik silinir.
 function notificationStorageKey() {
     return currentUser ? `notifications-${currentUser.uid}` : 'notifications';
 }
 
-function loadNotifications() {
+function notifCollection() {
+    return db.collection('users').doc(currentUser.uid).collection('notifications');
+}
+
+function mondayTs() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d.getTime();
+}
+
+async function loadNotifications() {
+    // Tek seferlik: eski localStorage bildirimlerini kalıcı sil.
+    try { localStorage.removeItem(notificationStorageKey()); } catch (e) {}
+    notifications = [];
+    if (!currentUser) { updateNotificationsUI(); return; }
     try {
-        notifications = JSON.parse(localStorage.getItem(notificationStorageKey()) || '[]');
-        if (!Array.isArray(notifications)) notifications = [];
+        const snap = await notifCollection().orderBy('ts', 'desc').limit(80).get();
+        const cut = mondayTs();
+        const olds = [];
+        const actives = [];
+        snap.forEach(doc => {
+            const d = doc.data() || {};
+            if (!Number(d.ts) || d.ts < cut) { olds.push(doc.ref); return; }
+            if (d.deleted) return; // silinenler kullanıcıya gösterilmez, adminde durur
+            actives.push({ id: doc.id, key: d.key || '', title: d.title || 'Finora', message: d.message || '', icon: d.icon || 'fa-bell', read: !!d.read, ts: d.ts });
+        });
+        notifications = actives.slice(0, 40);
+        // 40 kaydı aşan aktifleri silinmiş işaretle (fiziksel silme pazartesi).
+        for (const item of actives.slice(40)) {
+            try { await notifCollection().doc(item.id).update({ deleted: true, deletedAt: Date.now() }); } catch (e) {}
+        }
+        for (const ref of olds) { try { await ref.delete(); } catch (e) {} }
     } catch (error) {
         console.warn('Bildirimler okunamadı.', error);
         notifications = [];
     }
+    updateNotificationsUI();
 }
 
 function saveNotifications() {
-    try {
-        localStorage.setItem(notificationStorageKey(), JSON.stringify(notifications.slice(0, 40)));
-    } catch (error) {
-        console.warn('Bildirimler yazılamadı.', error);
-    }
+    // Okundu bilgisini Firestore'a yazar (ateşle-unut).
+    if (!currentUser) return;
+    notifications.forEach(item => {
+        if (!item.id || item._savedRead === item.read) return;
+        item._savedRead = item.read;
+        notifCollection().doc(item.id).update({ read: item.read }).catch(() => {});
+    });
 }
 
 // Bildirim sesi: Web Audio ile kısa bip. Tarayıcılar ses için kullanıcı etkileşimi
@@ -126,14 +160,19 @@ function playNotificationSound() {
 }
 
 function addNotification(id, message, icon = 'fa-bell', title = 'Finora') {
-    if (notifications.some(item => item.id === id)) return;
-    notifications.unshift({ id, message, icon, title, read: false, createdAt: new Date().toISOString() });
-    saveNotifications();
+    if (notifications.some(item => item.key === id || item.id === id)) return;
+    const item = { id: '', key: id, message, icon, title, read: false, ts: Date.now() };
+    notifications.unshift(item);
+    notifications = notifications.slice(0, 40);
     updateNotificationsUI();
     playNotificationSound();
     if ('Notification' in window && Notification.permission === 'granted') {
         try { new Notification(title, { body: message, icon: 'icons/logo-192.png' }); } catch (e) { console.warn('Masaüstü bildirimi gösterilemedi.', e); }
     }
+    if (!currentUser) return;
+    notifCollection().add({ key: id, message, icon, title, read: false, ts: item.ts })
+        .then(ref => { item.id = ref.id; })
+        .catch(e => console.warn('Bildirim yazılamadı.', e));
 }
 
 function updateNotificationsUI() {
@@ -149,16 +188,20 @@ function updateNotificationsUI() {
 }
 
 window.deleteNotification = function (id) {
-    notifications = notifications.filter(item => item.id !== id);
-    saveNotifications();
+    const item = notifications.find(n => n.id === id || n.key === id);
+    notifications = notifications.filter(n => n !== item);
+    // Yumuşak silme: kayıt durur, admin görmeye devam eder.
+    if (item && item.id && currentUser) notifCollection().doc(item.id).update({ deleted: true, deletedAt: Date.now() }).catch(() => {});
     updateNotificationsUI();
 };
 
-window.clearAllNotifications = function () {
+window.clearAllNotifications = async function () {
     if (!notifications.length || !confirm('Tüm bildirimler silinsin mi?')) return;
+    const ids = notifications.filter(n => n.id).map(n => n.id);
     notifications = [];
-    saveNotifications();
     updateNotificationsUI();
+    if (!currentUser) return;
+    for (const did of ids) { try { await notifCollection().doc(did).update({ deleted: true, deletedAt: Date.now() }); } catch (e) {} }
 };
 
 async function requestNotificationPermission() {
@@ -772,7 +815,7 @@ async function loadUserData() {
         goalsSnapshot.forEach(doc => goals.push({ id: doc.id, ...doc.data() }));
 
         await loadBudgets();
-        loadNotifications();
+        await loadNotifications();
         updateAllUI();
         checkNotifications();
         updateNotificationsUI();
@@ -1437,6 +1480,8 @@ function updateDashboard() {
     const totalIncome = transactions.filter(t => t.type === 'income' && String(t.date || '').startsWith(currentMonth)).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const totalExpense = transactions.filter(t => t.type === 'expense' && String(t.date || '').startsWith(currentMonth)).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome * 100) : 0;
+    const netBalance = totalIncome - totalExpense;
+    const accountCount = accounts.length;
     const upcomingInstallments = getCurrentCreditCardInstallments().reduce((sum, item) => sum + item.amount, 0);
 
     const investmentAccounts = accounts.filter(isInvestmentAccount);
@@ -1459,6 +1504,8 @@ function updateDashboard() {
     const investmentSummaryEl = document.getElementById('investmentSummary');
     const investmentProfitLossEl = document.getElementById('investmentProfitLoss');
     const upcomingInstallmentsEl = document.getElementById('upcomingInstallments');
+    const statNetEl = document.getElementById('statNet');
+    const statAccountCountEl = document.getElementById('statAccountCount');
     const monthDisplay = document.getElementById('currentMonthDisplay');
 
     if (isHidden) {
@@ -1469,6 +1516,8 @@ function updateDashboard() {
         if (investmentSummaryEl) investmentSummaryEl.textContent = '₺••••••';
         if (investmentProfitLossEl) investmentProfitLossEl.textContent = 'Kâr/Zarar: ₺••••••';
         if (upcomingInstallmentsEl) upcomingInstallmentsEl.textContent = '₺••••••';
+        if (statNetEl) statNetEl.textContent = '₺••••••';
+        if (statAccountCountEl) statAccountCountEl.textContent = '••';
     } else {
         if (totalBalanceEl) totalBalanceEl.textContent = `₺${totalBalance.toFixed(2)}`;
         if (totalIncomeEl) totalIncomeEl.textContent = `₺${totalIncome.toFixed(2)}`;
@@ -1482,6 +1531,12 @@ function updateDashboard() {
             investmentProfitLossEl.classList.toggle('loss', investmentTotals.profitLoss < 0);
         }
         if (upcomingInstallmentsEl) upcomingInstallmentsEl.textContent = `₺${upcomingInstallments.toFixed(2)}`;
+        if (statNetEl) {
+            statNetEl.textContent = `${netBalance >= 0 ? '+' : '-'}₺${Math.abs(netBalance).toFixed(2)}`;
+            statNetEl.classList.toggle('profit', netBalance >= 0);
+            statNetEl.classList.toggle('loss', netBalance < 0);
+        }
+        if (statAccountCountEl) statAccountCountEl.textContent = String(accountCount);
     }
 
     if (monthDisplay) monthDisplay.textContent = formatMonth(currentMonth);

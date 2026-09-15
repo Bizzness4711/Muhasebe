@@ -184,8 +184,27 @@
         <p><strong>İşlem sayısı:</strong> ${txCount}</p>
         <p><strong>Toplam TRY bakiye:</strong> ₺${Number(totalTry).toFixed(2)}</p>
         <h3 style="margin:14px 0 8px;font-size:.95rem;">Hesaplar (${accCount})</h3>
-        <div class="table-scroll"><table class="advanced-report-table"><thead><tr><th>Ad</th><th>Para birimi</th><th>Bakiye</th><th>Oluşturma</th><th>ID</th></tr></thead><tbody>${accRows}</tbody></table></div>`;
+        <div class="table-scroll"><table class="advanced-report-table"><thead><tr><th>Ad</th><th>Para birimi</th><th>Bakiye</th><th>Oluşturma</th><th>ID</th></tr></thead><tbody>${accRows}</tbody></table></div>
+        <h3 style="margin:14px 0 8px;font-size:.95rem;">Bildirimler (son 20, silinenler dahil)</h3>
+        <div id="adminDetailNotifs"><p class="empty-state">Yükleniyor...</p></div>`;
       renderAdminUsers();
+      try {
+        const notifSnap = await db.collection('users').doc(uid).collection('notifications').orderBy('ts', 'desc').limit(20).get();
+        const box = document.getElementById('adminDetailNotifs');
+        if (box) {
+          if (notifSnap.empty) box.innerHTML = '<p class="empty-state">Bildirim yok.</p>';
+          else {
+            const rows = [];
+            notifSnap.forEach(doc => {
+              const n = doc.data() || {};
+              const when = Number(n.ts) ? new Date(n.ts).toLocaleString('tr-TR') : '-';
+              const state = n.deleted ? 'silindi' : (n.read ? 'okundu' : 'yeni');
+              rows.push(`<tr><td>${escapeHtml(n.title || 'Finora')}</td><td>${escapeHtml(n.message || '')}</td><td>${state}</td><td>${escapeHtml(when)}</td></tr>`);
+            });
+            box.innerHTML = `<div class="table-scroll"><table class="advanced-report-table"><thead><tr><th>Başlık</th><th>Mesaj</th><th>Durum</th><th>Tarih</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+          }
+        }
+      } catch (e) { console.warn('Admin bildirim okunamadı.', e); }
     } catch (e) {
       body.innerHTML = `<p class="empty-state">Detay yüklenemedi: ${escapeHtml(e.message)}</p>`;
     }
