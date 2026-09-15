@@ -85,10 +85,13 @@ async function main() {
         if (!bodies.length) continue;
         const text = bodies.slice(0, 3).join('\n');
         const res = await messaging.sendEachForMulticast({ tokens, notification: { title: 'Finora', body: text } });
+        console.log(`FCM sonuç: ${res.successCount} başarılı, ${res.failureCount} hatalı`);
+        // Geçersiz tokenları temizle, diğer hataları logla
         // Geçersiz tokenları temizle
         const dead = [];
         res.responses.forEach((r, i) => {
             if (!r.success && r.error && r.error.code === 'messaging/registration-token-not-registered') dead.push(tokens[i]);
+            if (!r.success) console.log(`Token hata: ${tokens[i].slice(0, 12)}… ${r.error?.code} ${r.error?.message}`);
         });
         for (const t of dead) {
             await db.collection('users').doc(uid).collection('pushTokens').doc(t).delete();
