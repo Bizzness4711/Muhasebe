@@ -2,8 +2,8 @@ name: Push reminders
 
 on:
   schedule:
-    # Her saat başı (UTC). Ücretsiz limit: ayda ~720 dk.
-    - cron: '0 * * * *'
+    # Her 30 dakikada bir (UTC). Ücretsiz limit: ayda ~1440 dk.
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
