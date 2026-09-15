@@ -144,7 +144,7 @@ function updateNotificationsUI() {
     count.textContent = unread.length > 99 ? '99+' : String(unread.length);
     count.hidden = unread.length === 0;
     list.innerHTML = notifications.length
-        ? notifications.slice(0, 12).map(item => `<div class="notification-item"><i class="fas ${escapeHtml(item.icon)}"></i><span><strong>${escapeHtml(item.title || 'Finora')}</strong> · ${escapeHtml(item.message)}</span><button class="delete-btn" onclick="deleteNotification('${item.id}')" title="Bildirimi sil"><i class="fas fa-times"></i></button></div>`).join('')
+        ? notifications.slice(0, 12).map(item => `<div class="notification-item"><i class="fas ${escapeHtml(item.icon)}"></i><span><strong>${escapeHtml(item.title || 'Finora')}</strong> · ${escapeHtml(item.message)}</span><button class="delete-btn" onclick="event.stopPropagation();deleteNotification('${item.id}')" title="Bildirimi sil"><i class="fas fa-times"></i></button></div>`).join('')
         : '<div class="notification-empty">Yeni bildiriminiz yok.</div>';
 }
 
