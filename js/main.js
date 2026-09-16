@@ -394,23 +394,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('accountSelect').addEventListener('change', updateAccountRateInfo);
 
-    // Kategoriler
-    const categories = {
-        expense: ['🍔 Yemek','🚗 Ulaşım','🏠 Kira','💡 Faturalar','🛒 Market','🎮 Eğlence','💊 Sağlık','📚 Eğitim','👕 Giyim','📱 Teknoloji','🎁 Hediyeler','📋 Diğer'],
-        income: ['💰 Maaş','💼 Serbest Çalışma','📈 Yatırım','🎁 Hediye','🏠 Kira Geliri','📋 Diğer']
-    };
-    function updateCategorySelect() {
-        const select = document.getElementById('category');
-        if (!select) return;
-        select.innerHTML = '<option value="">Kategori Seçin</option>';
-        categories[selectedType].forEach(category => { select.innerHTML += `<option value="${category}">${category}</option>`; });
-        const budgetSelect = document.getElementById('budgetCategory');
-        if (budgetSelect && !budgetSelect.dataset.filled) {
-            budgetSelect.innerHTML = '<option value="">Kategori Seçin</option>';
-            categories.expense.forEach(category => { budgetSelect.innerHTML += `<option value="${category}">${category}</option>`; });
-            budgetSelect.dataset.filled = 'true';
+    // Kategori ekleme
+    document.getElementById('categoryForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+        const name = document.getElementById('newCategoryName').value.trim();
+        const type = document.getElementById('newCategoryType').value === 'income' ? 'income' : 'expense';
+        if (!name) { showToast('Kategori adı girin.', 'error'); return; }
+        if (getCategories(type).some(c => c.toLocaleLowerCase('tr') === name.toLocaleLowerCase('tr'))) {
+            showToast('Bu kategori zaten var.', 'error');
+            return;
         }
-    }
+        try {
+            const ref = await db.collection('users').doc(currentUser.uid).collection('categories').add({
+                name, type, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            customCategories.push({ id: ref.id, name, type });
+            document.getElementById('categoryForm').reset();
+            updateCategorySelect();
+            showToast('Kategori eklendi.', 'success');
+        } catch (error) { showToast('Eklenemedi: ' + error.message, 'error'); }
+    });
     updateCategorySelect();
 
     // Bütçe formu

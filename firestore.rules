@@ -23,6 +23,9 @@ service cloud.firestore {
       match /recurringTransactions/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
       match /goals/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
       match /budgets/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
+      match /categories/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
+      // Bildirimler: haftalık otomatik temizlik istemcide yapılır, admin görebilir.
+      match /notifications/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
       // Push token: cihaz kendi tokenını yazar. pushLog'u sadece sunucu (Admin SDK) yazar.
       match /pushTokens/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
       match /pushLog/{doc} { allow read: if isOwner(uid) || isAdmin(); allow write: if false; }

@@ -615,6 +615,19 @@
                         <button id="testNotifSoundBtn" class="export-btn" type="button"><i class="fas fa-volume-up"></i> Sesi test et</button>
                         <small class="hint-text">Site kapalıyken bildirim gelmez; bildirimler uygulama açıkken üretilir.</small>
                     </div>
+                    <div class="setting-item">
+                        <label>Kategoriler</label>
+                        <form id="categoryForm" class="security-setting-row">
+                            <input id="newCategoryName" type="text" maxlength="40" placeholder="Örn: 🐾 Evcil Hayvan" autocomplete="off" required>
+                            <select id="newCategoryType" aria-label="Kategori türü">
+                                <option value="expense">Masraf</option>
+                                <option value="income">Gelir</option>
+                            </select>
+                            <button class="export-btn" type="submit"><i class="fas fa-plus"></i> Ekle</button>
+                        </form>
+                        <div id="categoriesList" class="transactions-modern"></div>
+                        <small class="hint-text">Silinen kategorideki eski işlemler korunur.</small>
+                    </div>
                     <div class="setting-item danger"><label>Tüm Verileri Sil</label><button id="clearData" class="danger-btn"><i class="fas fa-trash"></i> Verileri Temizle</button></div>
                 </div>
             </div>
