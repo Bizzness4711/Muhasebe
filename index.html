@@ -508,7 +508,7 @@
 
             <!-- Reports -->
             <div id="reports" class="page">
-                <div class="page-header"><h2>Raporlar</h2></div>
+                <div class="page-header"><h2>Raporlar</h2><button id="printReportBtn" class="export-btn" type="button"><i class="fas fa-print"></i> Yazdır / PDF</button></div>
                 <div class="report-controls report-card">
                     <div>
                         <span class="section-eyebrow">GELİŞMİŞ RAPOR</span>
@@ -698,8 +698,10 @@
         </main>
     </div>
 
-    <div id="securityLock" class="security-lock" hidden>
-        <div class="security-lock-card">
+    <!-- Yazdırılabilir aylık özet (ekranda gizli, baskıda görünür) -->
+    <div id="printReport" aria-hidden="true"></div>
+
+    <div id="securityLock" class="security-lock" hidden>        <div class="security-lock-card">
             <div class="security-lock-icon"><i class="fas fa-lock"></i></div>
             <h2>Uygulama kilitlendi</h2>
             <p>Devam etmek için PIN kodunuzu girin.</p>
@@ -714,6 +716,7 @@
     <script src="js/core.js"></script>
     <script src="js/main.js"></script>
     <script src="js/tablexfer.js"></script>
+    <script src="js/printreport.js"></script>
     <script src="js/push.js"></script>
     <script src="js/admin.js"></script>
 </body>

@@ -4164,8 +4164,7 @@ select {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-/* İndirme format menüsü */
-.download-wrap {
+/* İndirme format menüsü */.download-wrap {
   position: relative;
   display: inline-flex;
 }
@@ -4284,5 +4283,51 @@ select {
   }
   html {
     scroll-behavior: auto;
+  }
+}
+
+/* Yazdırılabilir rapor */
+#printReport {
+  display: none;
+}
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+  body > *:not(#printReport) {
+    display: none !important;
+  }
+  #printReport {
+    display: block !important;
+    color: #000;
+    font-size: 12px;
+  }
+  #printReport h1 {
+    font-size: 20px;
+    margin-bottom: 2px;
+  }
+  #printReport h2 {
+    font-size: 15px;
+    margin: 16px 0 6px;
+  }
+  #printReport .pr-sub {
+    color: #444;
+    margin-bottom: 12px;
+  }
+  #printReport .pr-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 8px;
+  }
+  #printReport .pr-table th,
+  #printReport .pr-table td {
+    border: 1px solid #999;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  #printReport .pr-table .num {
+    text-align: right;
+    white-space: nowrap;
   }
 }
