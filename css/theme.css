@@ -1,10 +1,10 @@
 ﻿/* ============================================================
    MODERN FINTECH LAYER (v2026.09-ui28)
-   - Yeni token sistemi; eski deÄŸiÅŸkenler alias olarak korunur.
-   - SÄ±nÄ±f/ID isimleri deÄŸiÅŸmedi; yalnÄ±zca gÃ¶rÃ¼nÃ¼m katmanÄ±.
+   - Yeni token sistemi; eski değişkenler alias olarak korunur.
+   - Sınıf/ID isimleri değişmedi; yalnızca görünüm katmanı.
    - ============================================================ */
 
-/* 1. TasarÄ±m token'larÄ± */
+/* 1. Tasarım token'ları */
 :root {
   --primary: #4f46c7;
   --primary-hover: #4338b8;
@@ -26,7 +26,7 @@
   --radius: 14px;
   --radius-lg: 20px;
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
-  /* Eski isimler -> yeni sistem (sÄ±fÄ±r kÄ±rÄ±lma) */
+  /* Eski isimler -> yeni sistem (sıfır kırılma) */
   --primary-color: var(--primary);
   --primary-dark: var(--primary-hover);
   --primary-rgb: 79, 70, 199;
@@ -59,7 +59,7 @@
   color-scheme: dark;
 }
 
-/* 2. Taban cilasÄ± */
+/* 2. Taban cilası */
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -200,7 +200,7 @@ button, a {
   box-shadow: inset 3px 0 0 var(--primary);
 }
 
-/* 5. Ã–zet kartlarÄ± */
+/* 5. Özet kartları */
 .stats-grid {
   grid-template-columns: repeat(6, 1fr);
   gap: 12px;
@@ -257,7 +257,7 @@ button, a {
 .stat-card .profit { color: var(--success); }
 .stat-card .loss { color: var(--danger); }
 
-/* 6. Bakiye kartlarÄ± */
+/* 6. Bakiye kartları */
 .balance-card {
   border-radius: var(--radius-lg);
   background: linear-gradient(135deg, #4c43b8 0%, #6d63e8 55%, #8b7ff0 100%);
@@ -431,7 +431,7 @@ select {
   text-wrap: balance;
 }
 
-/* 11. Ä°ÅŸlem / hesap / hedef kartlarÄ± */
+/* 11. İşlem / hesap / hedef kartları */
 .transaction-card-modern,
 .account-card,
 .goal-card,
@@ -468,7 +468,7 @@ select {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-/* Kategori yÃ¶neticisi: kompakt Ä±zgara */
+/* Kategori yöneticisi: kompakt ızgara */
 #categoriesList {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -493,7 +493,7 @@ select {
     grid-template-columns: repeat(2, 1fr);
   }
 }
-/* Ayarlar sayfasÄ±: bÃ¶lÃ¼mlÃ¼ kartlar */
+/* Ayarlar sayfası: bölümlü kartlar */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -578,7 +578,7 @@ select {
 }
 .setting-item > .export-btn::after,
 .setting-item > .danger-btn::after {
-  content: "â€º";
+  content: "›";
   margin-left: auto;
   font-size: 1.2rem;
   opacity: 0.5;
@@ -671,7 +671,7 @@ select {
 #toggleCategoriesBtn {
   margin-bottom: 10px;
 }
-/* Ä°ndirme format menÃ¼sÃ¼ */.download-wrap {
+/* İndirme format menüsü */.download-wrap {
   position: relative;
   display: inline-flex;
 }
@@ -703,7 +703,7 @@ select {
   font-weight: 600;
 }
 
-/* 13. Auth ekranÄ± */
+/* 13. Auth ekranı */
 .auth-shell {
   border-radius: 26px;
 }
@@ -725,7 +725,7 @@ select {
   transition: color 0.15s var(--ease), border-color 0.15s var(--ease);
 }
 
-/* 15. Tablet ara kÄ±rÄ±lÄ±m */
+/* 15. Tablet ara kırılım */
 @media (max-width: 1100px) {
   .stats-grid {
     grid-template-columns: repeat(3, 1fr);
@@ -741,7 +741,7 @@ select {
   }
 }
 
-/* 16. KÃ¼Ã§Ã¼k ekran iyileÅŸtirmeleri */
+/* 16. Küçük ekran iyileştirmeleri */
 @media (max-width: 700px) {
   .header {
     height: 60px;
@@ -782,7 +782,7 @@ select {
   }
 }
 
-/* 17. AzaltÄ±lmÄ±ÅŸ hareket */
+/* 17. Azaltılmış hareket */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -793,7 +793,7 @@ select {
   }
 }
 
-/* YazdÄ±rÄ±labilir rapor */
+/* Yazdırılabilir rapor */
 #printReport {
   display: none;
 }

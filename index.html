@@ -764,7 +764,7 @@
     </div>
 
     <!-- Sprint 1: Quick-Add Widget (Floating Action Button) -->
-    <button id="quickAddBtn" class="quick-add-fab" title="Hızlı İşlem Ekle" aria-label="Hızlı işlem ekle">
+    <button id="quickAddBtn" class="quick-add-fab" title="Yeni İşlem" aria-label="Yeni işlem ekle">
         <i class="fas fa-plus"></i>
     </button>
 
@@ -772,7 +772,7 @@
     <div id="quickAddModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="quickAddTitle">
         <div class="modal-content quick-add-modal">
             <div class="modal-header">
-                <h2 id="quickAddTitle"><i class="fas fa-bolt"></i> Hızlı İşlem Ekle</h2>
+                <h2 id="quickAddTitle"><i class="fas fa-plus-circle"></i> Yeni İşlem</h2>
                 <button id="closeQuickAdd" class="close-btn" aria-label="Kapat">&times;</button>
             </div>
             <form id="quickAddForm" class="transaction-form">
@@ -781,16 +781,50 @@
                     <button type="button" class="type-btn" data-type="income"><i class="fas fa-arrow-up"></i> Gelir</button>
                 </div>
                 <div class="form-group">
+                    <label for="quickAddAccount">Hesap</label>
+                    <select id="quickAddAccount" required><option value="">Hesap Seçin</option></select>
+                    <small id="quickAddAccountRateInfo" class="hint-text" hidden></small>
+                </div>
+                <div class="form-group">
                     <label for="quickAddAmount">Tutar (₺)</label>
-                    <input type="number" id="quickAddAmount" required min="0.01" step="0.01" placeholder="0.00" inputmode="decimal">
+                    <input type="number" id="quickAddAmount" required min="0" step="0.01" placeholder="0.00" inputmode="decimal">
+                </div>
+                <div id="quickAddPurchaseDetails" class="form-group" hidden>
+                    <label for="quickAddPurchaseRate">Bu miktarı kaça aldınız? (₺)</label>
+                    <input type="number" id="quickAddPurchaseRate" min="0.01" step="0.01" placeholder="Örn: 54.00">
+                    <small>Güncel kur ile aradaki fark kâr/zarar olarak hesaplanır.</small>
                 </div>
                 <div class="form-group">
                     <label for="quickAddCategory">Kategori</label>
                     <select id="quickAddCategory" required><option value="">Kategori Seçin</option></select>
                 </div>
                 <div class="form-group">
-                    <label for="quickAddAccount">Hesap</label>
-                    <select id="quickAddAccount" required><option value="">Hesap Seçin</option></select>
+                    <label for="quickAddDescription">Açıklama</label>
+                    <input type="text" id="quickAddDescription" placeholder="Açıklama girin" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="quickAddDate">Tarih</label>
+                    <input type="date" id="quickAddDate" required>
+                </div>
+                <div id="quickAddCreditInstallmentDetails" class="credit-card-details" hidden>
+                    <strong class="credit-section-title">Taksitli işlem</strong>
+                    <label class="checkbox-label"><input type="checkbox" id="quickAddIsInstallment"> Bu işlemi taksitlendir</label>
+                    <div id="quickAddInstallmentOptions" class="installment-options" hidden>
+                        <div class="form-group"><label>Taksit sayısı</label><input type="number" id="quickAddInstallmentCount" min="2" max="60" value="2"></div>
+                        <div class="form-group"><label>Faiz oranı (%)</label><input type="number" id="quickAddInstallmentInterestRate" min="0" max="100" step="0.01" value="0" placeholder="Örn: 2.50"></div>
+                        <small>Faiz, alışveriş tutarına tek seferlik toplam oran olarak uygulanır.</small>
+                    </div>
+                </div>
+                <div class="recurring-section">
+                    <label class="checkbox-label"><input type="checkbox" id="quickAddIsRecurring"> Tekrarlayan işlem olarak kaydet</label>
+                    <div id="quickAddRecurringOptions" class="recurring-options" hidden>
+                        <div class="form-group"><label>Tekrar sıklığı</label><select id="quickAddRecurringFrequency">
+                            <option value="monthly">Her ay</option>
+                            <option value="weekly">Her hafta</option>
+                            <option value="yearly">Her yıl</option>
+                        </select></div>
+                        <div class="form-group"><label>Bitiş tarihi (isteğe bağlı)</label><input type="date" id="quickAddRecurringEndDate"></div>
+                    </div>
                 </div>
                 <button type="submit" class="submit-btn quick-add-submit"><i class="fas fa-check"></i> Kaydet</button>
             </form>

@@ -19,6 +19,9 @@ function initQuickAdd() {
 
     fab.addEventListener('click', () => {
         populateQuickAddSelects();
+        // set today's date
+        const dateEl = document.getElementById('quickAddDate');
+        if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
         modal.style.display = 'flex';
         const amt = document.getElementById('quickAddAmount');
         if (amt) amt.focus();
@@ -32,8 +35,50 @@ function initQuickAdd() {
             typeBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             quickAddType = btn.dataset.type;
+            populateQuickAddSelects();
         });
     });
+
+    // Show/hide purchase details for investment accounts
+    const accSel = document.getElementById('quickAddAccount');
+    if (accSel) {
+        accSel.addEventListener('change', () => {
+            const account = accounts.find(a => a.id === accSel.value);
+            const isInvest = account && isInvestmentAccount(account);
+            const pd = document.getElementById('quickAddPurchaseDetails');
+            if (pd) pd.hidden = !isInvest;
+            const isCredit = account && (account.type === 'credit' || (account.name || '').toLowerCase().includes('kredi'));
+            const cd = document.getElementById('quickAddCreditInstallmentDetails');
+            if (cd) cd.hidden = !isCredit;
+            const rateInfo = document.getElementById('quickAddAccountRateInfo');
+            if (rateInfo) {
+                if (isInvest) {
+                    rateInfo.textContent = `Kur: 1 ${account.currency} = ₺${Number(exchangeRates[account.currency] || 0).toFixed(2)}`;
+                    rateInfo.hidden = false;
+                } else {
+                    rateInfo.hidden = true;
+                }
+            }
+        });
+    }
+
+    // Installment checkbox toggle
+    const isInstCheck = document.getElementById('quickAddIsInstallment');
+    if (isInstCheck) {
+        isInstCheck.addEventListener('change', () => {
+            const opts = document.getElementById('quickAddInstallmentOptions');
+            if (opts) opts.hidden = !isInstCheck.checked;
+        });
+    }
+
+    // Recurring checkbox toggle
+    const isRecurCheck = document.getElementById('quickAddIsRecurring');
+    if (isRecurCheck) {
+        isRecurCheck.addEventListener('change', () => {
+            const opts = document.getElementById('quickAddRecurringOptions');
+            if (opts) opts.hidden = !isRecurCheck.checked;
+        });
+    }
 
     form && form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -43,34 +88,102 @@ function initQuickAdd() {
         if (!amount || !category || !accountId || !currentUser) return;
 
         const account = accounts.find(a => a.id === accountId);
-        if (quickAddType === 'expense' && account && account.type !== 'credit' && !(account.name || '').toLowerCase().includes('kredi') && Number(account.balance || 0) < amount) {
+        if (!account) return;
+        const isCreditType = account.type === 'credit' || (account.name || '').toLowerCase().includes('kredi');
+        if (quickAddType === 'expense' && !isCreditType && Number(account.balance || 0) < amount) {
             showToast(`Yetersiz bakiye! ${account.name} hesabında ₺${Number(account.balance || 0).toFixed(2)} var.`, 'error');
             return;
         }
-        const today = new Date().toISOString().slice(0, 10);
+
+        const isInvest = isInvestmentAccount(account);
+        const purchaseRate = isInvest ? parseFloat(document.getElementById('quickAddPurchaseRate')?.value) : 0;
+        if (isInvest && !(purchaseRate > 0)) {
+            showToast('Döviz/altın işlemi için alış fiyatını girin.', 'error');
+            return;
+        }
+
+        const isInstallment = isCreditType && document.getElementById('quickAddIsInstallment')?.checked;
+        const installmentCount = isInstallment ? Math.max(2, parseInt(document.getElementById('quickAddInstallmentCount')?.value, 10) || 2) : 1;
+        const installmentInterestRate = isInstallment ? Math.min(100, Math.max(0, parseFloat(document.getElementById('quickAddInstallmentInterestRate')?.value) || 0)) : 0;
+        const installmentInterestAmount = isInstallment ? amount * installmentInterestRate / 100 : 0;
+        const installmentTotal = amount + installmentInterestAmount;
+
+        const isRecurring = document.getElementById('quickAddIsRecurring')?.checked;
+        const frequency = document.getElementById('quickAddRecurringFrequency')?.value;
+        const endDate = document.getElementById('quickAddRecurringEndDate')?.value || null;
+        const transactionDate = document.getElementById('quickAddDate')?.value || new Date().toISOString().slice(0, 10);
+
+        if (isRecurring && endDate && endDate < transactionDate) {
+            showToast('Tekrarlayan işlemin bitiş tarihi başlangıç tarihinden önce olamaz.', 'error');
+            return;
+        }
+
+        const openingRate = getAccountOpeningRate(account);
+        const transactionRate = isInvest ? Number(exchangeRates[account.currency] || openingRate) : 0;
+        const profitLoss = isInvest && transactionRate > 0 ? (transactionRate - purchaseRate) * amount : 0;
+
+        const description = document.getElementById('quickAddDescription')?.value || '';
+
         const tx = {
             type: quickAddType,
             amount,
             category,
             accountId,
-            currency: account ? (account.currency || 'TRY') : 'TRY',
-            description: '',
-            date: today,
+            accountName: account.name,
+            accountCurrency: account.currency || 'TRY',
+            accountOpeningRate: openingRate,
+            accountOpeningRateDate: account.openingRateDate || null,
+            purchaseRate,
+            transactionRate,
+            transactionRateDate: new Date().toISOString(),
+            profitLoss,
+            description: description || 'Açıklama yok',
+            date: transactionDate,
+            isInstallment,
+            installmentCount,
+            installmentInterestRate,
+            installmentInterestAmount,
+            installmentTotal,
+            installmentAmount: isInstallment ? installmentTotal / installmentCount : amount,
             createdAt: new Date().toISOString(),
             userId: currentUser.uid,
         };
 
         try {
-            await db.collection('users').doc(currentUser.uid).collection('transactions').add(tx);
-            // ponytail: islem bildirimi e-postasi kapali — kullanici istemedi
+            const batch = db.batch();
+            const txRef = db.collection('users').doc(currentUser.uid).collection('transactions').doc();
+            batch.set(txRef, tx);
+
+            if (isRecurring && frequency) {
+                const recurRef = db.collection('users').doc(currentUser.uid).collection('recurringTransactions').doc();
+                batch.set(recurRef, {
+                    type: quickAddType, amount, category, description: tx.description,
+                    accountId, accountName: account.name, accountCurrency: account.currency,
+                    purchaseRate, frequency,
+                    nextDate: getNextRecurringDate(transactionDate, frequency),
+                    endDate, active: true, isInstallment, installmentCount,
+                    installmentInterestRate, installmentInterestAmount, installmentTotal,
+                    installmentAmount: tx.installmentAmount,
+                    userId: currentUser.uid,
+                });
+            }
+
+            await batch.commit();
             showToast(quickAddType === 'income' ? 'Gelir eklendi!' : 'Masraf eklendi!', 'success');
             modal.style.display = 'none';
             form.reset();
-            // re-activate expense button
             typeBtns.forEach(b => b.classList.remove('active'));
             const expBtn = modal.querySelector('[data-type="expense"]');
             if (expBtn) expBtn.classList.add('active');
             quickAddType = 'expense';
+            const pd = document.getElementById('quickAddPurchaseDetails');
+            if (pd) pd.hidden = true;
+            const cd = document.getElementById('quickAddCreditInstallmentDetails');
+            if (cd) cd.hidden = true;
+            const io = document.getElementById('quickAddInstallmentOptions');
+            if (io) io.hidden = true;
+            const ro = document.getElementById('quickAddRecurringOptions');
+            if (ro) ro.hidden = true;
             await loadUserData();
         } catch (err) {
             showToast('Hata: ' + err.message, 'error');

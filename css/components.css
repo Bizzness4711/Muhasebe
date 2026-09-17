@@ -2191,6 +2191,8 @@ select option {
   max-width: 420px;
   width: 90%;
   margin: auto;
+  max-height: 85vh;
+  overflow-y: auto;
 }
 .quick-add-type-toggle {
   display: flex;

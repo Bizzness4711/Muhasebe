@@ -144,7 +144,7 @@
 }
 
 /* ================================
-   FiÅŸ OCR ve Kamera Stilleri
+   Fiş OCR ve Kamera Stilleri
    ================================ */
 
 .receipt-upload-actions {
@@ -173,7 +173,7 @@
   box-shadow: var(--shadow);
 }
 
-/* FiÅŸ Onay KartÄ± */
+/* Fiş Onay Kartı */
 .receipt-confirm-card {
   border: 1px solid rgba(var(--primary-rgb), 0.2);
   border-radius: 16px;
@@ -786,7 +786,7 @@
     gap: 16px;
   }
 }
-/* Bildirimler + bÃ¼tÃ§eler */
+/* Bildirimler + bütçeler */
 .notification-panel {
   position: absolute;
   top: 42px;
