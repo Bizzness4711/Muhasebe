@@ -27,6 +27,27 @@ auth.onAuthStateChanged(async (user) => {
         document.getElementById('userName').textContent = userName;
         document.getElementById('userAvatar').innerHTML = userName.charAt(0).toUpperCase();
 
+        // E-posta doğrulama banner
+        const verifyBanner = document.getElementById('emailVerifyBanner');
+        if (verifyBanner) {
+            verifyBanner.hidden = user.emailVerified;
+            const resendBtn = document.getElementById('resendVerifyBtn');
+            const dismissBtn = document.getElementById('dismissVerifyBtn');
+            if (resendBtn && !resendBtn._bound) {
+                resendBtn._bound = true;
+                resendBtn.addEventListener('click', async () => {
+                    try {
+                        await user.sendEmailVerification();
+                        showToast('Doğrulama e-postası tekrar gönderildi!', 'success');
+                    } catch (err) { showToast('Gönderilemedi: ' + err.message, 'error'); }
+                });
+            }
+            if (dismissBtn && !dismissBtn._bound) {
+                dismissBtn._bound = true;
+                dismissBtn.addEventListener('click', () => { verifyBanner.hidden = true; });
+            }
+        }
+
         isHidden = true;
         totalBalanceVisible = false;
         updateAllUI();

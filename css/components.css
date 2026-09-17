@@ -2559,4 +2559,44 @@ select option {
     padding: 4px 8px;
     font-size: 0.78rem;
   }
-}
+}
+
+/* ============================================================
+   EMAIL VERIFICATION BANNER
+   ============================================================ */
+.email-verify-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  z-index: 100;
+}
+.email-verify-banner i { font-size: 1.1rem; flex-shrink: 0; }
+.email-verify-banner span { flex: 1; min-width: 0; }
+.verify-resend-btn {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+.verify-resend-btn:hover { background: rgba(255,255,255,0.35); }
+.verify-dismiss-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+}
+.verify-dismiss-btn:hover { color: #fff; }

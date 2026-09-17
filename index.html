@@ -73,6 +73,12 @@
 
     <!-- Main App -->
     <div id="app" class="app-container" style="display:none;">
+        <div id="emailVerifyBanner" class="email-verify-banner" hidden>
+            <i class="fas fa-envelope-open-text"></i>
+            <span>E-posta adresinizi doğrulayın. Doğrulama linki gelen kutunuzda.</span>
+            <button id="resendVerifyBtn" class="verify-resend-btn">Tekrar Gönder</button>
+            <button id="dismissVerifyBtn" class="verify-dismiss-btn" aria-label="Kapat"><i class="fas fa-times"></i></button>
+        </div>
         <header class="header">
             <div class="header-left">
                 <button id="menuBtn" class="menu-btn" aria-label="Menüyü aç"><i class="fas fa-bars"></i></button>

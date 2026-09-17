@@ -251,8 +251,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const result = await auth.createUserWithEmailAndPassword(document.getElementById('registerEmail').value, document.getElementById('registerPassword').value);
             await result.user.updateProfile({ displayName: document.getElementById('registerName').value });
+            await result.user.sendEmailVerification();
             if (typeof sendWelcomeEmail === 'function') sendWelcomeEmail(document.getElementById('registerName').value);
-            showToast('Kayıt başarılı!', 'success');
+            showToast('Kayıt başarılı! E-posta doğrulama linki gönderildi.', 'success');
         } catch (error) { showToast('Kayıt hatası: ' + error.message, 'error'); }
     });
 
