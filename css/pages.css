@@ -1,0 +1,887 @@
+﻿#reports .report-comparison-card strong span {
+  display: inline;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+}
+#reports .report-comparison-card small {
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+#reports .report-detail-grid {
+  grid-template-columns: 1fr 1.3fr;
+  margin-bottom: 22px;
+}
+#reports .report-distribution-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 8px;
+}
+#reports .distribution-row {
+  position: relative;
+  padding-bottom: 2px;
+}
+#reports .distribution-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82rem;
+}
+#reports .distribution-row strong {
+  font-weight: 750;
+}
+#reports .distribution-row small {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+#reports .distribution-track {
+  height: 7px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--surface-muted);
+}
+#reports .distribution-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary-color), #a42bc4);
+}
+#reports .report-hidden-value {
+  color: var(--text-secondary);
+  letter-spacing: 0.08em;
+}
+
+/* Finora brand system */
+.finora-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(145deg, #6256d9, #a42bc4);
+  color: #fff;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 1.05rem;
+  font-weight: 850;
+  line-height: 1;
+  box-shadow: 0 5px 13px rgba(98, 86, 217, 0.28);
+}
+.auth-brand .finora-logo-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  box-shadow: 0 6px 16px rgba(98, 86, 217, 0.35);
+}
+.header-left {
+  gap: 10px;
+}
+.header-logo-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  font-size: 1.02rem;
+}
+.sidebar {
+  padding: 22px 16px;
+}
+.sidebar:before {
+  display: none;
+}
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 10px 38px;
+  color: var(--text-color);
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+.sidebar-brand .finora-logo-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+@media (max-width: 700px) {
+  #reports .report-controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  #reports .report-period-field {
+    justify-content: space-between;
+    width: 100%;
+  }
+  #reports .report-period-field select {
+    flex: 1;
+  }
+  #reports .report-comparison-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  #reports .report-detail-grid {
+    grid-template-columns: 1fr;
+  }
+  #reports .report-comparison-card span,
+  #reports .report-comparison-card small {
+    font-size: 0.82rem;
+  }
+  #reports .report-comparison-card strong {
+    font-size: 1.12rem;
+  }
+}
+
+/* ================================
+   FiÅŸ OCR ve Kamera Stilleri
+   ================================ */
+
+.receipt-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.receipt-upload-actions .add-btn {
+  flex: 1;
+  min-width: 140px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.receipt-preview {
+  margin-top: 12px;
+}
+
+.receipt-preview img {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+}
+
+/* FiÅŸ Onay KartÄ± */
+.receipt-confirm-card {
+  border: 1px solid rgba(var(--primary-rgb), 0.2);
+  border-radius: 16px;
+  background: linear-gradient(
+    135deg,
+    var(--surface-color),
+    rgba(var(--primary-rgb), 0.04)
+  );
+  box-shadow: 0 8px 24px rgba(31, 34, 63, 0.08);
+  overflow: hidden;
+  animation: slideUp 0.3s ease;
+}
+
+.receipt-confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  background: linear-gradient(
+    135deg,
+    rgba(var(--primary-rgb), 0.1),
+    rgba(164, 43, 196, 0.06)
+  );
+  border-bottom: 1px solid rgba(var(--primary-rgb), 0.12);
+}
+
+.receipt-confirm-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #6256d9, #a42bc4);
+  color: #fff;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.receipt-confirm-title h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-color);
+}
+
+.receipt-confirm-title p {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.receipt-confirm-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--border-color);
+}
+
+.receipt-confirm-field {
+  padding: 14px 20px;
+  background: var(--surface-color);
+}
+
+.receipt-confirm-field label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.receipt-confirm-field .value {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.receipt-confirm-field .value.amount {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--expense-color);
+}
+
+.receipt-confirm-raw {
+  padding: 12px 20px;
+  background: var(--surface-muted);
+  max-height: 100px;
+  overflow: auto;
+}
+
+.receipt-confirm-raw pre {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  font-family: "SF Mono", "Consolas", monospace;
+}
+
+.receipt-confirm-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid rgba(var(--primary-rgb), 0.12);
+}
+
+.receipt-confirm-actions .submit-btn,
+.receipt-confirm-actions .cancel-btn {
+  flex: 1;
+  justify-content: center;
+}
+
+/* Kamera Modal */
+.receipt-camera-modal {
+  background: rgba(0, 0, 0, 0.88) !important;
+  backdrop-filter: blur(8px);
+}
+
+.receipt-camera-content {
+  width: min(500px, 100%) !important;
+  padding: 0 !important;
+  border-radius: 20px !important;
+  overflow: hidden;
+  background: #000 !important;
+}
+
+.receipt-camera-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.receipt-camera-header h2 {
+  font-size: 1rem;
+  color: #fff;
+  font-weight: 600;
+}
+
+.receipt-camera-header h2 i {
+  color: #a42bc4;
+  margin-right: 8px;
+}
+
+.receipt-camera-header .close-btn {
+  color: rgba(255, 255, 255, 0.7) !important;
+  position: static !important;
+}
+
+.receipt-camera-header .close-btn:hover {
+  color: #fff !important;
+}
+
+.receipt-camera-body {
+  position: relative;
+  background: #000;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+
+.receipt-camera-body video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.receipt-camera-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.receipt-camera-frame {
+  width: 80%;
+  height: 70%;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
+}
+
+.receipt-camera-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.camera-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1rem;
+  transition: var(--transition);
+}
+
+.camera-action-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.camera-capture-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  font-size: 1.6rem;
+  transition: var(--transition);
+}
+
+.camera-capture-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(1.05);
+}
+
+.camera-capture-btn:active {
+  transform: scale(0.95);
+}
+
+/* Mobil uyumluluk */
+@media (max-width: 700px) {
+  .receipt-upload-actions .add-btn {
+    min-width: 100px;
+    font-size: 0.8rem;
+    padding: 9px 11px;
+  }
+
+  .receipt-confirm-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .receipt-confirm-actions {
+    flex-direction: column;
+  }
+
+  .receipt-camera-content {
+    border-radius: 0 !important;
+    width: 100% !important;
+    height: 100vh;
+    max-height: 100vh;
+  }
+
+  .receipt-camera-body {
+    flex: 1;
+    aspect-ratio: auto;
+  }
+}
+
+/* ========== RECEIPT CAMERA & OCR ========== */
+.receipt-camera-modal {
+  background: #000;
+  padding: 0;
+}
+.receipt-camera-content {
+  width: 100%;
+  max-width: 500px;
+  padding: 0;
+  border-radius: 20px;
+  overflow: hidden;
+}
+.receipt-camera-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: rgba(0, 0, 0, 0.6);
+}
+.receipt-camera-header h2 {
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.receipt-camera-header .close-btn {
+  color: #fff;
+}
+.receipt-camera-body {
+  position: relative;
+  background: #000;
+}
+.receipt-camera-body video {
+  width: 100%;
+  display: block;
+  max-height: 60vh;
+  object-fit: cover;
+}
+.receipt-camera-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.receipt-camera-frame {
+  width: 80%;
+  height: 60%;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
+}
+.receipt-camera-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.8);
+}
+.camera-action-btn {
+  width: 48px;
+  height: 48px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+.camera-action-btn:hover {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.camera-capture-btn {
+  width: 72px;
+  height: 72px;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  font-size: 1.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+.camera-capture-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+.camera-capture-btn:active {
+  transform: scale(0.95);
+  background: rgba(255, 255, 255, 0.4);
+}
+.camera-action-btn i {
+  pointer-events: none;
+}
+
+/* Receipt preview */
+.receipt-preview {
+  margin-top: 16px;
+}
+.receipt-preview img {
+  border: 2px dashed rgba(var(--primary-rgb), 0.25);
+  background: var(--surface-muted);
+}
+
+/* Receipt confirmation card */
+.receipt-confirm-card {
+  position: relative;
+  overflow: hidden;
+  margin-top: 18px;
+  padding: 20px;
+  border: 2px solid rgba(var(--primary-rgb), 0.25);
+  border-radius: 16px;
+  background: linear-gradient(
+    135deg,
+    rgba(var(--primary-rgb), 0.06),
+    rgba(21, 154, 114, 0.04)
+  );
+  animation: slideUp 0.3s ease;
+}
+.receipt-confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.receipt-confirm-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #4c43b8, #8c4dcc);
+  color: #fff;
+  font-size: 1.1rem;
+}
+.receipt-confirm-title h3 {
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+.receipt-confirm-title p {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+.receipt-confirm-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.receipt-confirm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.receipt-confirm-field label {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.receipt-confirm-field .value {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.receipt-confirm-field .value.amount {
+  color: var(--expense-color);
+  font-size: 1.25rem;
+}
+.receipt-confirm-actions {
+  display: flex;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(var(--primary-rgb), 0.15);
+}
+.receipt-confirm-actions .submit-btn {
+  flex: 2;
+}
+.receipt-confirm-actions .cancel-btn {
+  flex: 1;
+}
+.receipt-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.receipt-upload-actions .add-btn {
+  font-size: 0.82rem;
+  padding: 9px 12px;
+}
+
+@media (max-width: 700px) {
+  .receipt-confirm-grid {
+    grid-template-columns: 1fr;
+  }
+  .receipt-confirm-actions {
+    flex-direction: column;
+  }
+  .receipt-camera-modal {
+    padding: 0;
+  }
+  .receipt-camera-content {
+    border-radius: 0;
+    height: 100vh;
+    max-width: 100%;
+  }
+  .receipt-camera-body video {
+    max-height: calc(100vh - 180px);
+    object-fit: cover;
+  }
+  .receipt-upload-actions {
+    flex-direction: column;
+  }
+  .receipt-upload-actions .add-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Admin paneli */
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.admin-toolbar input[type="search"] {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  background: var(--surface-muted);
+  color: var(--text-color);
+}
+.admin-role {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.admin-role.admin {
+  background: rgba(98, 86, 217, 0.12);
+  color: var(--primary-color);
+}
+.admin-role.user {
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+.admin-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.admin-mini-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text-color);
+  font-size: 0.75rem;
+}
+.admin-mini-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+.admin-mini-btn.danger {
+  color: var(--expense-color);
+  border-color: rgba(217, 87, 104, 0.3);
+}
+.rates-status-dot { width:8px; height:8px; border-radius:50%; background: var(--text-secondary); display:inline-block; margin-left:6px; transition: background .3s; }
+
+/* Admin panel v2 */
+.admin-tabs {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+}
+.admin-tab {
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+.admin-tab.active {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+.admin-tab-panel {
+  display: none;
+}
+.admin-tab-panel.active {
+  display: block;
+}
+.admin-activity-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.admin-activity-item:last-child {
+  border-bottom: 0;
+}
+.admin-activity-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--primary-color);
+  font-weight: 700;
+}
+.admin-activity-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.admin-activity-info small {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+#adminDetailBody p {
+  margin-bottom: 8px;
+  font-size: 0.88rem;
+}
+@media (max-width: 700px) {
+  .admin-tabs {
+    gap: 16px;
+  }
+}
+/* Bildirimler + bÃ¼tÃ§eler */
+.notification-panel {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--surface-color);
+  box-shadow: var(--shadow-lg);
+}
+.notification-panel[hidden] {
+  display: none;
+}
+.notification-panel-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.75rem;
+}
+.notification-panel-header button,
+.notification-permission-btn {
+  border: 0;
+  background: none;
+  color: var(--primary-color);
+  font-size: 0.7rem;
+}
+.notification-panel-header span {
+  display: flex;
+  gap: 10px;
+}
+.notification-item span {
+  flex: 1;
+}
+.notification-item {
+  display: flex;
+  gap: 9px;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.78rem;
+}
+.notification-item i {
+  color: var(--primary-color);
+}
+.notification-empty {
+  padding: 18px;
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: 0.8rem;
+}
+.notification-permission-btn {
+  width: 100%;
+  padding: 11px;
+  border-top: 1px solid var(--border-color);
+}
+.budget-card {
+  padding: 20px;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.budget-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.budget-fill.warn {
+  background: var(--warning-color);
+}
+.budget-fill.over {
+  background: var(--expense-color);
+}
+.budget-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 0.82rem;
+}
+.budget-row span {
+  min-width: 110px;
+}
+.budget-mini-bar {
+  flex: 1;
+  margin: 0;
+}
+@media (max-width: 700px) {
+  .notification-panel {
+    position: fixed;
+    top: var(--header-height);
+    right: 10px;
+  }
+}
+

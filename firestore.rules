@@ -11,10 +11,9 @@ service cloud.firestore {
     // İlk admini Firebase Console'dan manuel ver: users/{uid} -> role = "admin"
     match /users/{uid} {
       allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid);
+      allow create: if isOwner(uid) && (!('role' in request.resource.data) || request.resource.data.role == 'user');
       // Rol alanını sadece admin değiştirebilir, normal kullanıcı değiştiremez.
-      allow update: if isOwner(uid) && !('role' in request.resource.data) || ('role' in resource.data && request.resource.data.role == resource.data.role)
-                 || isAdmin();
+      allow update: if (isOwner(uid) && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)) || isAdmin();
       allow delete: if isAdmin();
 
       match /accounts/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }

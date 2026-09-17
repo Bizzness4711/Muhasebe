@@ -48,7 +48,9 @@
   }
 
   function fileName(ext) {
-    return `islemler-${new Date().toISOString().split('T')[0]}.${ext}`;
+    // ponytail: yerel tarih kullan (UTC 00:30 TR kayması önlensin)
+    const d=new Date(), y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0');
+    return `islemler-${y}-${m}-${dd}.${ext}`;
   }
 
   function downloadBlob(content, mime, name) {

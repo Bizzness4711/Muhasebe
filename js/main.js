@@ -1,7 +1,7 @@
+// ponytail: not split — single DOMContentLoaded closure with shared state
+// (selectedType, editingTransactionId). 889 lines, manageable.
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 Uygulama başlatıldı');
-
-    // Gizlilik butonu
+        // Gizlilik butonu
     document.getElementById('privacyModeBtn').addEventListener('click', togglePrivacyMode);
 
     // Göz butonu
@@ -129,10 +129,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    document.getElementById('newTransactionBtn').addEventListener('click', () => {
+    const newTxBtn = document.getElementById('newTransactionBtn');
+    if (newTxBtn) newTxBtn.addEventListener('click', () => {
         editingTransactionId = null;
         document.getElementById('transactionForm').reset();
-        document.getElementById('date').value = new Date().toISOString().split('T')[0];
+        document.getElementById('date').value = formatLocalDate(new Date());
         document.getElementById('recurringOptions').hidden = true;
         document.getElementById('installmentOptions').hidden = true;
         document.getElementById('creditInstallmentDetails').hidden = true;
@@ -148,13 +149,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Menü butonu
-    document.getElementById('menuBtn').addEventListener('click', () => {
-        document.getElementById('sidebar').classList.toggle('open');
-        document.getElementById('sidebarOverlay').classList.toggle('show');
+    const menuBtn = document.getElementById('menuBtn');
+    const menuIcon = menuBtn.querySelector('i');
+
+    function updateMenuIcon() {
+        const isClosed = window.innerWidth > 700
+            ? document.body.classList.contains('sidebar-closed')
+            : !document.getElementById('sidebar').classList.contains('open');
+        menuIcon.classList.toggle('fa-bars', isClosed);
+        menuIcon.classList.toggle('fa-xmark', !isClosed);
+    }
+
+    menuBtn.addEventListener('click', () => {
+        if (window.innerWidth <= 700) {
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('sidebarOverlay').classList.toggle('show');
+        } else {
+            document.body.classList.toggle('sidebar-closed');
+        }
+        updateMenuIcon();
     });
     document.getElementById('sidebarOverlay').addEventListener('click', () => {
         document.getElementById('sidebar').classList.remove('open');
         document.getElementById('sidebarOverlay').classList.remove('show');
+        updateMenuIcon();
     });
 
     // Bildirimler: zil paneli + izin + ses ayarı
@@ -199,11 +217,20 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Test sesi çalındı.', 'success');
     });
 
-    // Tema
+    // E-posta bildirim toggle
+    // E-posta bildirimleri zorunlu — toggle kaldirildi
+    const emailStatusEl = document.getElementById('emailConfigStatus');
+    if (emailStatusEl) {
+        const configured = typeof _emailConfigured === 'function' && _emailConfigured();
+        emailStatusEl.textContent = configured ? '✅ EmailJS yapılandırılmış' : '⚠️ EmailJS yapılandırılmamış';
+        emailStatusEl.style.color = configured ? 'var(--income-color)' : 'var(--warning-color)';
+    }
+
+    // Tema (tek kaynak: <html> üzerindeki data-theme — admin Sistem sekmesi doğru okur)
     document.getElementById('themeBtn').addEventListener('click', () => {
-        const currentTheme = document.body.getAttribute('data-theme');
+        const currentTheme = document.documentElement.dataset.theme || document.body.getAttribute('data-theme') || 'light';
         const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        document.body.setAttribute('data-theme', newTheme);
+        document.documentElement.dataset.theme = newTheme;
         localStorage.setItem('theme-v2', newTheme);
         document.querySelector('#themeBtn i').className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
     });
@@ -233,6 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const result = await auth.createUserWithEmailAndPassword(document.getElementById('registerEmail').value, document.getElementById('registerPassword').value);
             await result.user.updateProfile({ displayName: document.getElementById('registerName').value });
+            if (typeof sendWelcomeEmail === 'function') sendWelcomeEmail(document.getElementById('registerName').value);
             showToast('Kayıt başarılı!', 'success');
         } catch (error) { showToast('Kayıt hatası: ' + error.message, 'error'); }
     });
@@ -417,6 +445,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     updateCategorySelect();
 
+    // Kategori listesini aç/kapa
+    document.getElementById('toggleCategoriesBtn')?.addEventListener('click', () => {
+        const list = document.getElementById('categoriesList');
+        const btn = document.getElementById('toggleCategoriesBtn');
+        if (!list || !btn) return;
+        list.hidden = !list.hidden;
+        btn.setAttribute('aria-expanded', String(!list.hidden));
+    });
+
     // Bütçe formu
     const budgetMonthInput = document.getElementById('budgetMonth');
     if (budgetMonthInput && !budgetMonthInput.value) budgetMonthInput.value = currentMonth;
@@ -447,7 +484,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const accountId = document.getElementById('accountSelect').value;
         const amount = parseFloat(document.getElementById('amount').value);
         const account = accounts.find(a => a.id === accountId);
-        if (!accountId || !amount || !account) { showToast('Lütfen geçerli bir hesap ve tutar seçin!', 'error'); return; }
+        if (!accountId || !Number.isFinite(amount) || amount <= 0 || !account) { showToast('Lütfen geçerli bir hesap ve tutar seçin!', 'error'); return; }
+        const isCreditType = account.type === 'credit' || (account.name || '').toLowerCase().includes('kredi');
+        if (selectedType === 'expense' && !isCreditType && Number(account.balance || 0) < amount) {
+            showToast(`Yetersiz bakiye! ${account.name} hesabında ₺${Number(account.balance || 0).toFixed(2)} var, ₺${amount.toFixed(2)} harcamaya çalışıyorsunuz.`, 'error');
+            return;
+        }
         const isInvestment = isInvestmentAccount(account);
         const purchaseRate = isInvestment
             ? parseFloat(document.getElementById('transactionPurchaseRate').value)
@@ -605,12 +647,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 editingTransactionId = null;
                 document.getElementById('transactionForm').reset();
-                document.getElementById('date').value = new Date().toISOString().split('T')[0];
+                document.getElementById('date').value = formatLocalDate(new Date());
                 document.getElementById('recurringOptions').hidden = true;
                 document.getElementById('installmentOptions').hidden = true;
                 document.getElementById('creditInstallmentDetails').hidden = true;
                 document.getElementById('transactionSubmitBtn').innerHTML = '<i class="fas fa-save"></i> Kaydet';
                 showToast('İşlem güncellendi!', 'success');
+                if (typeof saveMerchantToHistory === 'function') saveMerchantToHistory(document.getElementById('description').value);
                 await loadUserData();
                 return;
             }
@@ -692,13 +735,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateRecurringTransactionsUI();
             }
             document.getElementById('transactionForm').reset();
-            document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('date').value = formatLocalDate(new Date());
             document.getElementById('recurringOptions').hidden = true;
             document.getElementById('installmentOptions').hidden = true;
             document.getElementById('creditInstallmentDetails').hidden = true;
             document.getElementById('creditCardDetails').hidden = true;
             updateTransactionPurchaseFields();
             showToast('İşlem kaydedildi!', 'success');
+            if (typeof saveMerchantToHistory === 'function') saveMerchantToHistory(document.getElementById('description').value);
             await loadUserData();
         } catch (error) { showToast('İşlem hatası: ' + error.message, 'error'); }
     });
@@ -720,8 +764,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!fromAccount || !toAccount) { showToast('Hesaplar bulunamadı!', 'error'); return; }
         if (Number(fromAccount.balance || 0) < amount) { showToast('Yetersiz bakiye!', 'error'); return; }
         const isCreditCard = toAccount.type === 'credit' || toAccount.name.toLowerCase().includes('kredi');
-        console.log('Kredi kartı mı?', isCreditCard);
-        try {
+                try {
             const batch = db.batch();
             const transferRef = db.collection('users').doc(currentUser.uid).collection('transfers').doc();
             batch.set(transferRef, {
@@ -754,7 +797,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             await batch.commit();
             document.getElementById('transferForm').reset();
-            document.getElementById('transferDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('transferDate').value = formatLocalDate(new Date());
             showToast('Transfer başarılı!', 'success');
             await loadUserData();
         } catch (error) { showToast('Transfer hatası: ' + error.message, 'error'); }
@@ -852,17 +895,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Tarihleri ayarla
-    document.getElementById('date').value = new Date().toISOString().split('T')[0];
-    document.getElementById('transferDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('date').value = formatLocalDate(new Date());
+    document.getElementById('transferDate').value = formatLocalDate(new Date());
 
     // Tema
     const savedTheme = localStorage.getItem('theme-v2') || 'light';
-    document.body.setAttribute('data-theme', savedTheme);
+    document.documentElement.dataset.theme = savedTheme;
     document.querySelector('#themeBtn i').className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
 
     // Kurları göster
     updateExchangeRatesDisplay();
     document.getElementById('currentMonthDisplay').textContent = formatMonth(currentMonth);
-    
-    console.log('✅ Uygulama hazır');
-});
+    });

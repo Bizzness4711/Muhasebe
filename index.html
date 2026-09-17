@@ -7,7 +7,11 @@
     <meta name="theme-color" content="#171827" media="(prefers-color-scheme: dark)">
     <title>Finora</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%236256d9'/%3E%3Cpath d='M19 15h29v9H28v8h17v8H28v17h-9z' fill='white'/%3E%3Ccircle cx='49' cy='47' r='7' fill='%23c06cff'/%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=20260911-ui27">
+    <link rel="stylesheet" href="css/base.css?v=20260917">
+    <link rel="stylesheet" href="css/layout.css?v=20260917">
+    <link rel="stylesheet" href="css/components.css?v=20260917">
+    <link rel="stylesheet" href="css/pages.css?v=20260917">
+    <link rel="stylesheet" href="css/theme.css?v=20260917">
     <script>
         document.documentElement.dataset.theme = localStorage.getItem('theme-v2') === 'dark' ? 'dark' : 'light';
     </script>
@@ -21,6 +25,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <!-- SheetJS (Excel okuma/yazma) -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- EmailJS (e-posta bildirimleri) -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
     <a href="#dashboard" class="skip-link">İçeriğe atla</a>
@@ -74,9 +80,6 @@
                 <h1>Finora</h1>
             </div>
             <div class="header-right">
-                <button id="newTransactionBtn" class="header-action-btn" title="Yeni İşlem">
-                    <i class="fas fa-plus"></i><span>Yeni İşlem</span>
-                </button>
                 <div class="notification-wrap">
                     <button id="notificationBtn" class="notification-btn" title="Bildirimler" aria-label="Bildirimler">
                         <i class="fas fa-bell"></i><span id="notificationCount" class="notification-count" hidden>0</span>
@@ -167,6 +170,53 @@
                     <div class="stat-card accounts"><h3>Hesap Sayısı</h3><p id="statAccountCount">0</p><i class="fas fa-wallet"></i></div>
                     <div class="stat-card installment stat-card-action" id="upcomingInstallmentsCard" role="button" tabindex="0" aria-label="Bu ay gelecek taksitleri görüntüle"><h3>Bu Ay Gelecek Taksit</h3><p id="upcomingInstallments">₺0.00</p><small>Kredi kartlarına göre görüntüle</small><i class="fas fa-calendar-check"></i></div>
                 </div>
+
+                <!-- Sprint 1: Monthly Comparison Card -->
+                <section class="monthly-comparison" id="monthlyComparisonCard" style="display:none;margin-bottom:20px;" aria-label="Aylık karşılaştırma">
+                    <div class="section-header"><h3><i class="fas fa-chart-line"></i> Aylık Karşılaştırma</h3></div>
+                    <div class="comparison-grid">
+                        <div class="comparison-item">
+                            <span class="comparison-label">Bu Ay Harcama</span>
+                            <strong id="currentMonthExpense">₺0.00</strong>
+                        </div>
+                        <div class="comparison-item">
+                            <span class="comparison-label">Geçen Ay Harcama</span>
+                            <strong id="lastMonthExpense">₺0.00</strong>
+                        </div>
+                        <div class="comparison-item">
+                            <span class="comparison-label">Fark</span>
+                            <strong id="expenseDiff" class="comparison-diff">₺0.00</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Harcama Radar Grafiği -->
+                <section class="spending-radar" id="spendingRadarCard" style="display:none;margin-bottom:20px;" aria-label="Harcama radar grafiği">
+                    <div class="section-header"><h3><i class="fas fa-spider"></i> Harcama Radarı</h3></div>
+                    <div class="radar-wrap">
+                        <div class="radar-chart-container">
+                            <canvas id="spendingRadarChart"></canvas>
+                        </div>
+                        <div id="radarLegend" class="radar-legend"></div>
+                    </div>
+                </section>
+
+                <!-- Sprint 1: Spending Velocity Alert -->
+                <section class="spending-velocity" id="spendingVelocityCard" style="display:none;margin-bottom:20px;" aria-label="Harcama hızı uyarısı">
+                    <div class="velocity-content">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <div class="velocity-text">
+                            <p id="velocityMessage">Bugün ₺0 harcadın — bu hızla ay sonu ₺0 olacak.</p>
+                            <small id="velocityWarning"></small>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Hedef İlerleme Halkaları -->
+                <section class="goal-rings" id="goalRingsCard" style="display:none;margin-bottom:20px;" aria-label="Hedefler">
+                    <div class="section-header"><h3><i class="fas fa-bullseye"></i> Hedefler</h3></div>
+                    <div class="rings-grid" id="goalRings"></div>
+                </section>
 
                 <section class="recent-transactions" id="budgetOverviewCard" style="display:none;margin-bottom:20px;" aria-label="Bütçe özeti">
                     <div class="section-header"><h3>Bütçe Durumu</h3></div>
@@ -290,7 +340,7 @@
                             <button type="button" class="type-btn" data-type="income"><i class="fas fa-plus"></i> Gelir</button>
                         </div>
                     </div>
-                    <div class="form-group"><label>Hesap</label><select id="accountSelect" required><option value="">Hesap Seçin</option></select></div>
+                    <div class="form-group"><label>Hesap</label><select id="accountSelect" required><option value="">Hesap Seçin</option></select><small id="accountRateInfo" class="hint-text" hidden></small></div>
                     <div class="form-group"><label>Tutar</label><input type="number" id="amount" required min="0" step="0.01" placeholder="0.00"></div>
                     <div id="transactionPurchaseDetails" class="form-group" hidden>
                         <label id="transactionPurchaseLabel">Bu miktarı kaça aldınız? (₺)</label>
@@ -298,7 +348,7 @@
                         <small id="transactionPurchaseHint">Güncel kur ile aradaki fark kâr/zarar olarak hesaplanır.</small>
                     </div>
                     <div class="form-group"><label>Kategori</label><select id="category" required><option value="">Kategori Seçin</option></select></div>
-                    <div class="form-group"><label>Açıklama</label><input type="text" id="description" placeholder="Açıklama girin"></div>
+                    <div class="form-group"><label>Açıklama</label><input type="text" id="description" placeholder="Açıklama girin" list="merchantSuggestions" autocomplete="off"></div>
                     <div class="form-group"><label>Tarih</label><input type="date" id="date" required></div>
                     <div id="creditInstallmentDetails" class="credit-card-details" hidden>
                         <strong class="credit-section-title">Taksitli işlem</strong>
@@ -592,7 +642,8 @@
                 <div class="page-header"><h2>Ayarlar</h2></div>
                 <div class="settings-container">
                     <div class="setting-item">
-                        <label>Uygulama Güvenliği</label>
+                        <div class="setting-head"><span class="setting-icon"><i class="fas fa-user-lock"></i></span><div><strong>Uygulama Güvenliği</strong><small>PIN kilidi ve otomatik kilit süresi</small></div></div>
+                        <label class="sr-only" for="securityPin">PIN kodu</label>
                         <div class="security-setting-row">
                             <input id="securityPin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" placeholder="4-8 haneli PIN" autocomplete="new-password">
                             <button id="saveSecurityPin" class="export-btn" type="button"><i class="fas fa-key"></i> PIN'i kaydet</button>
@@ -607,16 +658,21 @@
                         <button id="lockNow" class="export-btn security-lock-btn" type="button"><i class="fas fa-lock"></i> Şimdi kilitle</button>
                         <small class="hint-text">PIN, cihazınızda güvenli özet olarak saklanır.</small>
                     </div>
-                    <div class="setting-item"><label>Dönem Sistemi</label><button id="startNewMonth" class="export-btn"><i class="fas fa-play"></i> Yeni Ay Başlat</button></div>
+                    <div class="setting-item"><div class="setting-head"><span class="setting-icon"><i class="fas fa-calendar-plus"></i></span><div><strong>Dönem Sistemi</strong><small>Yeni ay başlatma</small></div></div><p class="hint-text">Aktif dönem: <strong id="settingsPeriodLabel">-</strong></p><p class="hint-text">Yeni ay başlatınca özetler ve bütçeler yeni döneme geçer, eski veriler korunur.</p><button id="startNewMonth" class="export-btn"><i class="fas fa-play"></i> Yeni Ay Başlat</button></div>
                     <div class="setting-item">
-                        <label>Bildirimler</label>
+                        <div class="setting-head"><span class="setting-icon"><i class="fas fa-bell"></i></span><div><strong>Bildirimler</strong><small>Masaüstü izni ve ses</small></div></div>
                         <button id="enableNotificationsSettingBtn" class="export-btn" type="button"><i class="fas fa-bell"></i> Masaüstü bildirimlerini aç</button>
                         <label class="checkbox-label"><input type="checkbox" id="notifSoundToggle" checked> Bildirim sesi çalsın</label>
                         <button id="testNotifSoundBtn" class="export-btn" type="button"><i class="fas fa-volume-up"></i> Sesi test et</button>
                         <small class="hint-text">Site kapalıyken bildirim gelmez; bildirimler uygulama açıkken üretilir.</small>
                     </div>
                     <div class="setting-item">
-                        <label>Kategoriler</label>
+                        <div class="setting-head"><span class="setting-icon"><i class="fas fa-envelope"></i></span><div><strong>E-posta Bildirimleri</strong><small>Bütçe uyarıları e-postayla gelsin</small></div></div>
+                        <small class="hint-text">Bütçe aşıldığında veya %80'i geçtiğinde e-posta gönderilir.</small>
+                        <small class="hint-text" id="emailConfigStatus"></small>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-head"><span class="setting-icon"><i class="fas fa-tags"></i></span><div><strong>Kategoriler</strong><small>Özel gelir/gider kategorileri</small></div></div>
                         <form id="categoryForm" class="security-setting-row">
                             <input id="newCategoryName" type="text" maxlength="40" placeholder="Örn: 🐾 Evcil Hayvan" autocomplete="off" required>
                             <select id="newCategoryType" aria-label="Kategori türü">
@@ -625,10 +681,11 @@
                             </select>
                             <button class="export-btn" type="submit"><i class="fas fa-plus"></i> Ekle</button>
                         </form>
-                        <div id="categoriesList" class="transactions-modern"></div>
+                        <button id="toggleCategoriesBtn" class="export-btn" type="button" aria-expanded="false"><i class="fas fa-list"></i> <span id="toggleCategoriesText">Kategorileri göster</span></button>
+                        <div id="categoriesList" class="transactions-modern" hidden></div>
                         <small class="hint-text">Silinen kategorideki eski işlemler korunur.</small>
                     </div>
-                    <div class="setting-item danger"><label>Tüm Verileri Sil</label><button id="clearData" class="danger-btn"><i class="fas fa-trash"></i> Verileri Temizle</button></div>
+                    <div class="setting-item danger"><div class="setting-head"><span class="setting-icon danger"><i class="fas fa-triangle-exclamation"></i></span><div><strong>Tehlikeli Bölge</strong><small>Geri alınamaz</small></div></div><button id="clearData" class="danger-btn"><i class="fas fa-trash"></i> Tüm Verileri Sil</button></div>
                 </div>
             </div>
 
@@ -711,6 +768,43 @@
         </main>
     </div>
 
+    <!-- Sprint 1: Quick-Add Widget (Floating Action Button) -->
+    <button id="quickAddBtn" class="quick-add-fab" title="Hızlı İşlem Ekle" aria-label="Hızlı işlem ekle">
+        <i class="fas fa-plus"></i>
+    </button>
+
+    <!-- Sprint 1: Quick-Add Modal -->
+    <div id="quickAddModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="quickAddTitle">
+        <div class="modal-content quick-add-modal">
+            <div class="modal-header">
+                <h2 id="quickAddTitle"><i class="fas fa-bolt"></i> Hızlı İşlem Ekle</h2>
+                <button id="closeQuickAdd" class="close-btn" aria-label="Kapat">&times;</button>
+            </div>
+            <form id="quickAddForm" class="transaction-form">
+                <div class="quick-add-type-toggle">
+                    <button type="button" class="type-btn active" data-type="expense"><i class="fas fa-arrow-down"></i> Masraf</button>
+                    <button type="button" class="type-btn" data-type="income"><i class="fas fa-arrow-up"></i> Gelir</button>
+                </div>
+                <div class="form-group">
+                    <label for="quickAddAmount">Tutar (₺)</label>
+                    <input type="number" id="quickAddAmount" required min="0.01" step="0.01" placeholder="0.00" inputmode="decimal">
+                </div>
+                <div class="form-group">
+                    <label for="quickAddCategory">Kategori</label>
+                    <select id="quickAddCategory" required><option value="">Kategori Seçin</option></select>
+                </div>
+                <div class="form-group">
+                    <label for="quickAddAccount">Hesap</label>
+                    <select id="quickAddAccount" required><option value="">Hesap Seçin</option></select>
+                </div>
+                <button type="submit" class="submit-btn quick-add-submit"><i class="fas fa-check"></i> Kaydet</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Sprint 1: Merchant Autocomplete Datalist -->
+    <datalist id="merchantSuggestions"></datalist>
+
     <!-- Yazdırılabilir aylık özet (ekranda gizli, baskıda görünür) -->
     <div id="printReport" aria-hidden="true"></div>
 
@@ -726,7 +820,18 @@
         </div>
     </div>
 
-    <script src="js/core.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/categories.js"></script>
+    <script src="js/notifications.js"></script>
+    <script src="js/budgets.js"></script>
+    <script src="js/security.js"></script>
+    <script src="js/rates.js"></script>
+    <script src="js/accounts.js"></script>
+    <script src="js/transactions.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/sprint1.js"></script>
+    <script src="js/email-notify.js"></script>
     <script src="js/main.js"></script>
     <script src="js/tablexfer.js"></script>
     <script src="js/printreport.js"></script>

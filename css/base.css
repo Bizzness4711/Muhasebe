@@ -1,0 +1,112 @@
+﻿* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+:root {
+  --primary-color: #6256d9;
+  --primary-dark: #4c43b8;
+  --primary-rgb: 98, 86, 217;
+  --income-color: #159a72;
+  --expense-color: #d95768;
+  --warning-color: #d08a25;
+  --bg-color: #f3f4fb;
+  --surface-color: #fff;
+  --surface-muted: #eef0fa;
+  --text-color: #202238;
+  --text-secondary: #72758a;
+  --border-color: #e5e6ef;
+  --shadow: 0 8px 24px rgba(31, 34, 63, 0.06);
+  --shadow-lg: 0 18px 48px rgba(31, 34, 63, 0.14);
+  --sidebar-width: 248px;
+  --header-height: 68px;
+  --radius: 16px;
+  --transition: all 0.2s ease;
+}
+[data-theme="dark"] {
+  --bg-color: #171827;
+  --surface-color: #202137;
+  --surface-muted: #292a42;
+  --text-color: #f4f3fa;
+  --text-secondary: #a6a7bb;
+  --border-color: #37384f;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.3);
+}
+html {
+  scroll-behavior: smooth;
+  transition: background-color 0.35s ease, color 0.35s ease;
+}
+body {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(98, 86, 217, 0.14), transparent 28%),
+    radial-gradient(
+      circle at 0% 76%,
+      rgba(21, 154, 114, 0.08),
+      transparent 24%
+    ),
+    var(--bg-color);
+  color: var(--text-color);
+  line-height: 1.5;
+  overflow-x: hidden;
+  transition: background-color 0.35s ease, color 0.35s ease;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgba(var(--primary-rgb), 0.25);
+  outline-offset: 2px;
+}
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(18, 20, 37, 0.72);
+}
+.modal-content {
+  width: min(540px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  overflow-x: visible;
+  padding: 30px;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+  transition: background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+.modal-header {
+  position: relative;
+  margin-bottom: 24px;
+  text-align: left;
+}
+.modal-header h2 {
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
+}
+.modal-subtitle,
+.modal-header p {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
