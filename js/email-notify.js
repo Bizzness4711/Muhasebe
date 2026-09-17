@@ -19,14 +19,8 @@ const _emailConfig = {
 /* Uygulama URL'si — CTA butonları buraya yönlendirir */
 const APP_URL = 'https://bizzness4711.github.io/Muhasebe/';
 
-const EMAIL_PREF_KEY = 'finora_email_notifications';
-
 function isEmailNotificationsEnabled() {
     return true; // ponytail: e-posta zorunlu, toggle kaldirildi
-}
-
-function setEmailNotifications(enabled) {
-    localStorage.setItem(EMAIL_PREF_KEY, enabled ? 'on' : 'off');
 }
 
 function _emailConfigured() {
@@ -278,28 +272,3 @@ async function sendGenericAlertEmail(title, message, options) {
         footer_text: options.footerNote || 'Bu e-posta Finora tarafından gönderilmiştir.'
     }, true); // ← BASİT ŞABLON
 }
-
-/* ==========================================================
-   TEST FONKSİYONLARI
-   ========================================================== */
-window.testEmail = async function(msg) {
-    console.log('[Email] Test başlatılıyor...');
-    setEmailNotifications(true);
-    var result = await sendGenericAlertEmail(
-        'Finora Test Bildirimi',
-        msg || 'Bu bir test e-postasıdır. E-posta bildirimleri başarıyla çalışıyor!',
-        { badgeText: 'TEST' }
-    );
-    console.log('[Email] Test sonucu:', result);
-    return result;
-};
-
-window.testBudgetEmail = async function() {
-    setEmailNotifications(true);
-    return sendBudgetAlertEmail('Yiyecek', 85, 850, 1000, false);
-};
-
-window.testBudgetOverEmail = async function() {
-    setEmailNotifications(true);
-    return sendBudgetAlertEmail('Ulaşım', 115, 1150, 1000, true);
-};

@@ -217,15 +217,6 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Test sesi çalındı.', 'success');
     });
 
-    // E-posta bildirim toggle
-    // E-posta bildirimleri zorunlu — toggle kaldirildi
-    const emailStatusEl = document.getElementById('emailConfigStatus');
-    if (emailStatusEl) {
-        const configured = typeof _emailConfigured === 'function' && _emailConfigured();
-        emailStatusEl.textContent = configured ? '✅ EmailJS yapılandırılmış' : '⚠️ EmailJS yapılandırılmamış';
-        emailStatusEl.style.color = configured ? 'var(--income-color)' : 'var(--warning-color)';
-    }
-
     // Tema (tek kaynak: <html> üzerindeki data-theme — admin Sistem sekmesi doğru okur)
     document.getElementById('themeBtn').addEventListener('click', () => {
         const currentTheme = document.documentElement.dataset.theme || document.body.getAttribute('data-theme') || 'light';
