@@ -248,12 +248,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Kayıt
     document.getElementById('registerForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        const email = document.getElementById('registerEmail').value;
+        const name = document.getElementById('registerName').value;
         try {
-            const result = await auth.createUserWithEmailAndPassword(document.getElementById('registerEmail').value, document.getElementById('registerPassword').value);
-            await result.user.updateProfile({ displayName: document.getElementById('registerName').value });
-            await result.user.sendEmailVerification();
-            if (typeof sendWelcomeEmail === 'function') sendWelcomeEmail(document.getElementById('registerName').value);
-            showToast('Kayıt başarılı! E-posta doğrulama linki gönderildi.', 'success');
+            const result = await auth.createUserWithEmailAndPassword(email, document.getElementById('registerPassword').value);
+            await result.user.updateProfile({ displayName: name });
+            try {
+                await result.user.sendEmailVerification();
+                showToast('Kayıt başarılı! E-posta doğrulama linki gönderildi.', 'success');
+            } catch (verifyErr) {
+                console.error('sendEmailVerification hatası:', verifyErr);
+                showToast('Kayıt oldu ancak doğrulama e-postası gönderilemedi: ' + verifyErr.message, 'error');
+            }
+            if (typeof sendWelcomeEmail === 'function') sendWelcomeEmail(name);
         } catch (error) { showToast('Kayıt hatası: ' + error.message, 'error'); }
     });
 

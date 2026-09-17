@@ -20,33 +20,39 @@ window.changeMonth = function(delta) {
 auth.onAuthStateChanged(async (user) => {
     if (user) {
         currentUser = user;
+
+        // E-posta doğrulanmamışsa banner göster (erişi engelleme — ponytail: Firebase Console yapılandırması gerektirir)
+        const verifyBanner = document.getElementById('emailVerifyBanner');
+        if (verifyBanner) {
+            if (!user.emailVerified) {
+                verifyBanner.hidden = false;
+                const resendBtn = verifyBanner.querySelector('.verify-resend-btn');
+                if (resendBtn) {
+                    resendBtn.onclick = async () => {
+                        try {
+                            await user.sendEmailVerification();
+                            showToast('Doğrulama e-postası tekrar gönderildi.', 'success');
+                        } catch (e) {
+                            showToast('E-posta gönderilemedi: ' + e.message, 'error');
+                        }
+                    };
+                }
+                const dismissBtn = verifyBanner.querySelector('.verify-dismiss-btn');
+                if (dismissBtn) {
+                    dismissBtn.onclick = () => { verifyBanner.hidden = true; };
+                }
+            } else {
+                verifyBanner.hidden = true;
+            }
+        }
+
         securityLocked = false;
+
         document.getElementById('loginModal').style.display = 'none';
         document.getElementById('app').style.display = 'block';
         const userName = user.displayName || user.email.split('@')[0];
         document.getElementById('userName').textContent = userName;
         document.getElementById('userAvatar').innerHTML = userName.charAt(0).toUpperCase();
-
-        // E-posta doğrulama banner
-        const verifyBanner = document.getElementById('emailVerifyBanner');
-        if (verifyBanner) {
-            verifyBanner.hidden = user.emailVerified;
-            const resendBtn = document.getElementById('resendVerifyBtn');
-            const dismissBtn = document.getElementById('dismissVerifyBtn');
-            if (resendBtn && !resendBtn._bound) {
-                resendBtn._bound = true;
-                resendBtn.addEventListener('click', async () => {
-                    try {
-                        await user.sendEmailVerification();
-                        showToast('Doğrulama e-postası tekrar gönderildi!', 'success');
-                    } catch (err) { showToast('Gönderilemedi: ' + err.message, 'error'); }
-                });
-            }
-            if (dismissBtn && !dismissBtn._bound) {
-                dismissBtn._bound = true;
-                dismissBtn.addEventListener('click', () => { verifyBanner.hidden = true; });
-            }
-        }
 
         isHidden = true;
         totalBalanceVisible = false;
