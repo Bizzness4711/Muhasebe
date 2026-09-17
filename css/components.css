@@ -337,19 +337,22 @@
   color: var(--text-secondary);
 }
 .type-btn.active[data-type="expense"] {
-  background: rgba(217, 87, 104, 0.1);
+  background: rgba(217, 87, 104, 0.15);
   border-color: var(--expense-color);
   color: var(--expense-color);
+  box-shadow: 0 0 0 1px var(--expense-color);
 }
 .type-btn.active[data-type="income"] {
-  background: rgba(21, 154, 114, 0.1);
+  background: rgba(21, 154, 114, 0.15);
   border-color: var(--income-color);
   color: var(--income-color);
+  box-shadow: 0 0 0 1px var(--income-color);
 }
 .type-btn.active[data-type="sell"] {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: #3b82f6;
-  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.15);
+  border-color: var(--secondary);
+  color: var(--secondary);
+  box-shadow: 0 0 0 1px var(--secondary);
 }
 .submit-btn,
 .auth-btn {
@@ -2223,18 +2226,21 @@ select option {
 }
 .type-btn[data-type="expense"].active {
   border-color: var(--expense-color, #d95768);
-  background: rgba(217, 87, 104, 0.08);
+  background: rgba(217, 87, 104, 0.15);
   color: var(--expense-color, #d95768);
+  box-shadow: 0 0 0 1px var(--expense-color, #d95768);
 }
 .type-btn[data-type="income"].active {
   border-color: var(--income-color, #159a72);
-  background: rgba(21, 154, 114, 0.08);
+  background: rgba(21, 154, 114, 0.15);
   color: var(--income-color, #159a72);
+  box-shadow: 0 0 0 1px var(--income-color, #159a72);
 }
 .type-btn[data-type="sell"].active {
-  border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  border-color: var(--secondary, #3b82f6);
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--secondary, #3b82f6);
+  box-shadow: 0 0 0 1px var(--secondary, #3b82f6);
 }
 .quick-add-submit {
   margin-top: 8px;
