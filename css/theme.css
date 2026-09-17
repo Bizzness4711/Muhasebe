@@ -578,7 +578,7 @@ select {
 }
 .setting-item > .export-btn::after,
 .setting-item > .danger-btn::after {
-  content: "›";
+  content: none;
   margin-left: auto;
   font-size: 1.2rem;
   opacity: 0.5;
