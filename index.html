@@ -304,6 +304,7 @@
                             <option value="all">Tümü</option>
                             <option value="income">Gelirler</option>
                             <option value="expense">Masraflar</option>
+                            <option value="sell">Satışlar</option>
                             <option value="transfer">Transferler</option>
                         </select>
                         <select id="filterAccount" class="filter-select"><option value="all">Tüm Hesaplar</option></select>
@@ -338,6 +339,7 @@
                         <div class="transaction-type-buttons">
                             <button type="button" class="type-btn active" data-type="expense"><i class="fas fa-minus"></i> Masraf</button>
                             <button type="button" class="type-btn" data-type="income"><i class="fas fa-plus"></i> Gelir</button>
+                            <button type="button" class="type-btn" data-type="sell" id="sellTypeBtn" style="display:none;"><i class="fas fa-exchange-alt"></i> Satış</button>
                         </div>
                     </div>
                     <div class="form-group"><label>Hesap</label><select id="accountSelect" required><option value="">Hesap Seçin</option></select><small id="accountRateInfo" class="hint-text" hidden></small></div>
@@ -346,6 +348,18 @@
                         <label id="transactionPurchaseLabel">Bu miktarı kaça aldınız? (₺)</label>
                         <input type="number" id="transactionPurchaseRate" min="0.01" step="0.01" placeholder="Örn: 54.00">
                         <small id="transactionPurchaseHint">Güncel kur ile aradaki fark kâr/zarar olarak hesaplanır.</small>
+                    </div>
+                    <div id="transactionSellDetails" class="form-group" hidden>
+                        <label id="transactionSellLabel">Bu miktarı kaça sattınız? (₺)</label>
+                        <input type="number" id="transactionSellRate" min="0.01" step="0.01" placeholder="Örn: 55.00">
+                        <small id="transactionSellHint">Satış kuru ile alış fiyatı arasındaki fark kâr/zarar olarak hesaplanır.</small>
+                    </div>
+                    <div id="transactionSellTargetGroup" class="form-group" hidden>
+                        <label>TRY geliri eklenecek hesap</label>
+                        <select id="transactionSellTarget" required>
+                            <option value="">Hesap seçin</option>
+                        </select>
+                        <small>Satıştan elde edilen TL bu hesaba aktarılır.</small>
                     </div>
                     <div class="form-group"><label>Kategori</label><select id="category" required><option value="">Kategori Seçin</option></select></div>
                     <div class="form-group"><label>Açıklama</label><input type="text" id="description" placeholder="Açıklama girin" list="merchantSuggestions" autocomplete="off"></div>
@@ -779,6 +793,7 @@
                 <div class="quick-add-type-toggle">
                     <button type="button" class="type-btn active" data-type="expense"><i class="fas fa-arrow-down"></i> Masraf</button>
                     <button type="button" class="type-btn" data-type="income"><i class="fas fa-arrow-up"></i> Gelir</button>
+                    <button type="button" class="type-btn" data-type="sell" id="quickAddSellBtn" style="display:none;"><i class="fas fa-exchange-alt"></i> Satış</button>
                 </div>
                 <div class="form-group">
                     <label for="quickAddAccount">Hesap</label>
@@ -793,6 +808,17 @@
                     <label for="quickAddPurchaseRate">Bu miktarı kaça aldınız? (₺)</label>
                     <input type="number" id="quickAddPurchaseRate" min="0.01" step="0.01" placeholder="Örn: 54.00">
                     <small>Güncel kur ile aradaki fark kâr/zarar olarak hesaplanır.</small>
+                </div>
+                <div id="quickAddSellDetails" hidden>
+                    <div class="form-group">
+                        <label for="quickAddSellRate">Satış kuru (₺)</label>
+                        <input type="number" id="quickAddSellRate" min="0.01" step="0.01" placeholder="Örn: 55.50">
+                        <small id="quickAddSellHint" class="hint-text"></small>
+                    </div>
+                    <div class="form-group">
+                        <label for="quickAddSellTarget">Gelir hesabını seçin (TRY)</label>
+                        <select id="quickAddSellTarget" required></select>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="quickAddCategory">Kategori</label>

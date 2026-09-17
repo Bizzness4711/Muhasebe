@@ -243,6 +243,8 @@ function updateAccountRateInfo() {
     if (!selectedAccount || selectedAccount.currency === 'TRY') {
         rateInfo.hidden = true;
         rateInfo.textContent = '';
+        if (typeof updateSellFields === 'function') updateSellFields();
+        if (typeof updateTransactionPurchaseFields === 'function') updateTransactionPurchaseFields();
         return;
     }
 
@@ -257,6 +259,8 @@ function updateAccountRateInfo() {
     const message = rateMessages[selectedAccount.currency] || `${selectedAccount.currency} fiyatı: ₺${(accountRate || (exchangeRates[selectedAccount.currency] || 0)).toFixed(2)}`;
     rateInfo.textContent = `${selectedAccount.name} için ${message} (hesap giriş fiyatı)`;
     rateInfo.hidden = false;
+    if (typeof updateSellFields === 'function') updateSellFields();
+    if (typeof updateTransactionPurchaseFields === 'function') updateTransactionPurchaseFields();
 }
 
 function getAccountOpeningRate(account) {
@@ -282,17 +286,64 @@ function updateTransactionPurchaseFields() {
     const account = accounts.find(item => item.id === accountSelect?.value);
     const installmentDetails = document.getElementById('creditInstallmentDetails');
     if (installmentDetails) installmentDetails.hidden = account?.type !== 'credit';
-    const visible = isInvestmentAccount(account);
+    const isInvest = isInvestmentAccount(account);
+    const sellBtn = document.getElementById('sellTypeBtn');
+    if (sellBtn) sellBtn.style.display = isInvest ? '' : 'none';
+    if (!isInvest && selectedType === 'sell') {
+        selectedType = 'expense';
+        document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+        const expenseBtn = document.querySelector('.type-btn[data-type="expense"]');
+        if (expenseBtn) expenseBtn.classList.add('active');
+        updateCategorySelect();
+    }
+    updateSellFields();
     if (!details || !input || !label) return;
-    details.hidden = !visible;
-    input.required = visible;
-    if (visible) {
+    details.hidden = !(isInvest && selectedType !== 'sell');
+    input.required = isInvest && selectedType !== 'sell';
+    if (isInvest && selectedType !== 'sell') {
         const currentRate = Number(exchangeRates[account.currency] || 0);
         label.textContent = `${account.currency === 'GRAM_ALTIN' ? 'Gram altını' : account.currency === 'CEYREK_ALTIN' ? 'Çeyrek altını' : account.currency} bu işlemde kaça aldınız? (₺)`;
         document.getElementById('transactionPurchaseHint').textContent =
             currentRate > 0 ? `Güncel kur: ₺${currentRate.toFixed(2)}. Aradaki fark kâr/zarar olarak hesaplanır.` : 'Güncel kur alınamadı; yine de alış fiyatını girin.';
     } else {
         input.value = '';
+    }
+}
+
+function updateSellFields() {
+    const accountSelect = document.getElementById('accountSelect');
+    const sellDetails = document.getElementById('transactionSellDetails');
+    const sellTargetGroup = document.getElementById('transactionSellTargetGroup');
+    const sellRateInput = document.getElementById('transactionSellRate');
+    const sellTargetSelect = document.getElementById('transactionSellTarget');
+    const account = accounts.find(item => item.id === accountSelect?.value);
+    const isInvest = isInvestmentAccount(account);
+    const showSell = isInvest && selectedType === 'sell';
+    if (sellDetails) {
+        sellDetails.hidden = !showSell;
+        if (sellRateInput) sellRateInput.required = showSell;
+    }
+    if (sellTargetGroup) {
+        sellTargetGroup.hidden = !showSell;
+        if (sellTargetSelect) sellTargetSelect.required = showSell;
+    }
+    if (showSell && sellRateInput) {
+        const currentRate = Number(exchangeRates[account?.currency] || 0);
+        const lbl = document.getElementById('transactionSellLabel');
+        if (lbl) {
+            const curName = account?.currency === 'GRAM_ALTIN' ? 'Gram altını' : account?.currency === 'CEYREK_ALTIN' ? 'Çeyrek altını' : account?.currency;
+            lbl.textContent = `${curName} kaça satıldı? (₺)`;
+        }
+        const hint = document.getElementById('transactionSellHint');
+        if (hint) {
+            hint.textContent = currentRate > 0 ? `Güncel kur: ₺${currentRate.toFixed(2)}. Alış-satış farkı kâr/zarar olur.` : 'Güncel kur alınamadı; satış fiyatını girin.';
+        }
+    }
+    if (showSell && sellTargetSelect) {
+        const TRYAccounts = accounts.filter(a => a.currency === 'TRY' && a.id !== account?.id);
+        sellTargetSelect.innerHTML = '<option value="">Hesap seçin</option>' +
+            TRYAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+        if (TRYAccounts.length === 1) sellTargetSelect.value = TRYAccounts[0].id;
     }
 }
 

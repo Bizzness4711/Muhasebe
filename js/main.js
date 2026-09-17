@@ -408,6 +408,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
             e.target.closest('.type-btn').classList.add('active');
             updateCategorySelect();
+            if (typeof updateSellFields === 'function') updateSellFields();
+            if (typeof updateTransactionPurchaseFields === 'function') updateTransactionPurchaseFields();
         });
     });
 
@@ -482,12 +484,21 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const isInvestment = isInvestmentAccount(account);
-        const purchaseRate = isInvestment
+        const isSell = selectedType === 'sell';
+        const purchaseRate = isInvestment && !isSell
             ? parseFloat(document.getElementById('transactionPurchaseRate').value)
             : 0;
-        if (isInvestment && !(purchaseRate > 0)) {
+        const sellRate = isInvestment && isSell
+            ? parseFloat(document.getElementById('transactionSellRate').value)
+            : 0;
+        const sellTargetId = isSell ? document.getElementById('transactionSellTarget')?.value : '';
+        if (isInvestment && !isSell && !(purchaseRate > 0)) {
             showToast('Döviz/altın işlemi için alış fiyatını girin.', 'error');
             return;
+        }
+        if (isSell) {
+            if (!(sellRate > 0)) { showToast('Satış kuru girin.', 'error'); return; }
+            if (!sellTargetId) { showToast('TRY gelirinin ekleneceği hesabı seçin.', 'error'); return; }
         }
         const openingRate = getAccountOpeningRate(account);
         const isRecurring = document.getElementById('isRecurring').checked;
@@ -545,9 +556,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     accountOpeningRate: getAccountOpeningRate(account),
                     accountOpeningRateDate: account.openingRateDate || null,
                     purchaseRate,
-                    transactionRate,
+                    transactionRate: isSell ? sellRate : transactionRate,
                     transactionRateDate: new Date().toISOString(),
-                    profitLoss,
+                    profitLoss: isSell ? 0 : profitLoss,
+                    sellRate: isSell ? sellRate : undefined,
+                    sellTargetAccountId: isSell ? sellTargetId : undefined,
+                    sellTargetAccountName: isSell ? (accounts.find(a => a.id === sellTargetId)?.name || '') : undefined,
                     isInstallment,
                     installmentCount,
                     installmentInterestRate,
@@ -585,7 +599,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (oldRecurring) {
                     batch.update(recurringCollection.doc(oldRecurring.id), { active: false, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
                 }
-                if (oldAccount && oldAccount.id === account.id) {
+                if (isSell) {
+                    const oldSellTargetId = oldTransaction.sellTargetAccountId || '';
+                    const oldSellTarget = oldSellTargetId ? accounts.find(a => a.id === oldSellTargetId) : null;
+                    const newSellTargetId = sellTargetId;
+                    const newSellTarget = accounts.find(a => a.id === newSellTargetId);
+                    if (oldSellTarget) {
+                        const revertAmount = Number(oldTransaction.amount || 0);
+                        const revertRate = Number(oldTransaction.sellRate || oldTransaction.transactionRate || 0);
+                        const revertProceeds = revertAmount * revertRate;
+                        batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(oldSellTargetId), {
+                            balance: Number(oldSellTarget.balance || 0) - revertProceeds
+                        });
+                    }
+                    if (oldAccount) {
+                        const revertInvestBalance = Number(oldAccount.balance || 0) + Number(oldTransaction.amount || 0);
+                        batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(oldAccount.id), {
+                            balance: revertInvestBalance,
+                            quantity: revertInvestBalance
+                        });
+                    }
+                    if (newSellTarget) {
+                        const newProceeds = amount * sellRate;
+                        batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(newSellTargetId), {
+                            balance: Number(newSellTarget.balance || 0) + newProceeds
+                        });
+                    }
+                    const investNewBalance = Number(account.balance || 0) - amount;
+                    batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(account.id), {
+                        balance: investNewBalance,
+                        quantity: investNewBalance
+                    });
+                } else if (oldAccount && oldAccount.id === account.id) {
                     const restoredBalance = Number(oldAccount.balance || 0) + (oldTransaction.type === 'income' ? -oldImpact : oldImpact);
                     const adjustedBalance = restoredBalance + (selectedType === 'income' ? newImpact : -newImpact);
                     const accountUpdates = { balance: adjustedBalance };
@@ -661,9 +706,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 accountOpeningRate: getAccountOpeningRate(account),
                 accountOpeningRateDate: account?.openingRateDate || null,
                 purchaseRate,
-                transactionRate,
+                transactionRate: isSell ? sellRate : transactionRate,
                 transactionRateDate: new Date().toISOString(),
-                profitLoss,
+                profitLoss: isSell ? 0 : profitLoss,
+                sellRate: isSell ? sellRate : undefined,
+                sellTargetAccountId: isSell ? sellTargetId : undefined,
+                sellTargetAccountName: isSell ? (accounts.find(a => a.id === sellTargetId)?.name || '') : undefined,
                 isInstallment,
                 installmentCount,
                 installmentInterestRate,
@@ -674,21 +722,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 isRecurringSource: isRecurring
             });
             if (account) {
-                const balanceAmount = isInstallment && selectedType === 'expense' ? installmentTotal : amount;
-                const newBalance = selectedType === 'income' ? account.balance + balanceAmount : account.balance - balanceAmount;
-                const updates = { balance: newBalance };
-                if (isInvestment) {
-                    updates.quantity = newBalance;
-                    if (selectedType === 'income') {
-                        const oldQuantity = Number(account.quantity ?? account.balance ?? 0);
-                        const oldRate = getAccountOpeningRate(account);
-                        updates.buyPrice = oldQuantity > 0
-                            ? ((oldQuantity * oldRate) + (amount * purchaseRate)) / newBalance
-                            : purchaseRate;
-                        updates.openingRate = updates.buyPrice;
+                if (isSell && account && sellTargetId) {
+                    const sellAccount = accounts.find(a => a.id === sellTargetId);
+                    if (!sellAccount) { showToast('Hedef hesap bulunamadı.', 'error'); return; }
+                    const investNewBalance = account.balance - amount;
+                    const costBasis = amount * (account.openingRate || account.buyPrice || purchaseRate);
+                    const proceeds = amount * sellRate;
+                    const realizedPL = proceeds - costBasis;
+                    const tryNewBalance = Number(sellAccount.balance || 0) + proceeds;
+                    const batch = db.batch();
+                    batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(accountId), {
+                        balance: investNewBalance,
+                        quantity: investNewBalance
+                    });
+                    batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(sellTargetId), {
+                        balance: tryNewBalance
+                    });
+                    const txRef = db.collection('users').doc(currentUser.uid).collection('transactions').doc(transactionRef.id);
+                    batch.update(txRef, { profitLoss: realizedPL });
+                    await batch.commit();
+                    const plLabel = realizedPL >= 0 ? `+₺${realizedPL.toFixed(2)} kâr` : `₺${realizedPL.toFixed(2)} zarar`;
+                    showToast(`Satış kaydedildi! ${plLabel}`, 'success');
+                } else {
+                    const balanceAmount = isInstallment && selectedType === 'expense' ? installmentTotal : amount;
+                    const newBalance = selectedType === 'income' ? account.balance + balanceAmount : account.balance - balanceAmount;
+                    const updates = { balance: newBalance };
+                    if (isInvestment) {
+                        updates.quantity = newBalance;
+                        if (selectedType === 'income') {
+                            const oldQuantity = Number(account.quantity ?? account.balance ?? 0);
+                            const oldRate = getAccountOpeningRate(account);
+                            updates.buyPrice = oldQuantity > 0
+                                ? ((oldQuantity * oldRate) + (amount * purchaseRate)) / newBalance
+                                : purchaseRate;
+                            updates.openingRate = updates.buyPrice;
+                        }
                     }
+                    await db.collection('users').doc(currentUser.uid).collection('accounts').doc(accountId).update(updates);
                 }
-                await db.collection('users').doc(currentUser.uid).collection('accounts').doc(accountId).update(updates);
             }
             if (isRecurring) {
                 const recurringData = {

@@ -262,7 +262,8 @@ function updateTransactionsUI() {
     const createCard = (item) => {
         const isExpense = item.displayType === 'expense';
         const isTransfer = item.displayType === 'transfer';
-        const icon = isExpense ? 'fa-arrow-up' : isTransfer ? 'fa-exchange-alt' : 'fa-arrow-down';
+        const isSell = item.displayType === 'sell';
+        const icon = isExpense ? 'fa-arrow-up' : isTransfer ? 'fa-exchange-alt' : isSell ? 'fa-hand-holding-usd' : 'fa-arrow-down';
         const sign = isExpense ? '-' : isTransfer ? '↔' : '+';
         const amountClass = isExpense ? 'expense' : isTransfer ? 'transfer' : 'income';
         const currencySymbol = item.accountCurrency === 'USD' ? '$' : item.accountCurrency === 'EUR' ? '€' : item.accountCurrency === 'GRAM_ALTIN' || item.accountCurrency === 'CEYREK_ALTIN' ? '🪙' : '₺';
@@ -271,7 +272,10 @@ function updateTransactionsUI() {
          const purchaseRateDisplay = !isTransfer && item.purchaseRate > 0
             ? `<div class="transaction-rate-modern">Alış kuru: ${getCurrencyRateLabel(item.accountCurrency, item.purchaseRate)}</div>`
             : '';
-        const transactionRateDisplay = !isTransfer && item.transactionRate > 0
+        const sellRateDisplay = isSell && item.transactionRate > 0
+            ? `<div class="transaction-rate-modern">Satış kuru: ${getCurrencyRateLabel(item.accountCurrency, item.transactionRate)}</div>`
+            : '';
+        const transactionRateDisplay = !isTransfer && !isSell && item.transactionRate > 0
             ? `<div class="transaction-rate-modern">İşlem kuru: ${getCurrencyRateLabel(item.accountCurrency, item.transactionRate)}</div>`
             : '';
         const profitLossDisplay = !isTransfer && item.profitLoss !== 0
@@ -289,7 +293,7 @@ function updateTransactionsUI() {
             <div class="transaction-icon-modern ${amountClass}"><i class="fas ${icon}"></i></div>
             <div class="transaction-info-modern">
                 <div class="transaction-title-modern">${escapeHtml(item.category)}</div>
-                <div class="transaction-subtitle-modern">${escapeHtml(item.description)} • ${escapeHtml(item.date)}${purchaseRateDisplay}${transactionRateDisplay}${profitLossDisplay}${installmentDisplay}</div>
+                <div class="transaction-subtitle-modern">${escapeHtml(item.description)} • ${escapeHtml(item.date)}${purchaseRateDisplay}${sellRateDisplay}${transactionRateDisplay}${profitLossDisplay}${installmentDisplay}</div>
             </div>
             <div class="transaction-amount-modern ${amountClass}">${amountDisplay}</div>
             ${deleteBtn}
@@ -303,6 +307,7 @@ function updateTransactionsUI() {
         let filtered = allItems;
         if (filterType === 'income') filtered = filtered.filter(t => t.displayType === 'income');
         if (filterType === 'expense') filtered = filtered.filter(t => t.displayType === 'expense');
+        if (filterType === 'sell') filtered = filtered.filter(t => t.displayType === 'sell');
         if (filterType === 'transfer') filtered = filtered.filter(t => t.displayType === 'transfer');
         if (filterAccount !== 'all') filtered = filtered.filter(t => t.accountId === filterAccount || t.fromAccountId === filterAccount);
         allList.innerHTML = filtered.length === 0 ? '<p class="empty-state">Bu filtrede işlem bulunamadı</p>' : filtered.map(createCard).join('');
@@ -319,7 +324,7 @@ function updateTransactionsUI() {
                 && item.description === transaction.description
                 && Number(item.amount) === Number(transaction.amount));
         editingTransactionId = id;
-        selectedType = transaction.type === 'income' ? 'income' : 'expense';
+        selectedType = transaction.type === 'income' ? 'income' : transaction.type === 'sell' ? 'sell' : 'expense';
         const typeButton = document.querySelector(`.type-btn[data-type="${selectedType}"]`);
         if (typeButton) typeButton.click();
         document.getElementById('accountSelect').value = transaction.accountId;
@@ -328,6 +333,11 @@ function updateTransactionsUI() {
         document.getElementById('description').value = transaction.description || '';
         document.getElementById('date').value = transaction.date || '';
         document.getElementById('transactionPurchaseRate').value = transaction.purchaseRate || '';
+        if (document.getElementById('transactionSellRate')) document.getElementById('transactionSellRate').value = transaction.sellRate || '';
+        updateSellFields();
+        if (transaction.sellTargetAccountId && document.getElementById('transactionSellTarget')) {
+            document.getElementById('transactionSellTarget').value = transaction.sellTargetAccountId;
+        }
         document.getElementById('isInstallment').checked = Boolean(transaction.isInstallment);
         document.getElementById('installmentOptions').hidden = !transaction.isInstallment;
         document.getElementById('installmentCount').value = transaction.installmentCount || 2;
@@ -478,31 +488,44 @@ window.deleteTransaction = async function(id) {
             const account = accounts.find(a => a.id === transaction.accountId);
             const batch = db.batch();
             if (account) {
-                // Taksitli işlem hesabı toplam tutarla etkiler; yalnızca anapara
-                // ile geri almak hesabı eksik bırakıyordu.
-                const impact = transaction.type === 'income'
-                    ? Number(transaction.amount || 0)
-                    : Number(transaction.isInstallment
-                        ? (transaction.installmentTotal || transaction.amount)
-                        : transaction.amount || 0);
-                const newBalance = transaction.type === 'income'
-                    ? Number(account.balance || 0) - impact
-                    : Number(account.balance || 0) + impact;
-                const updates = { balance: newBalance };
-                if (isInvestmentAccount(account)) {
-                    updates.quantity = newBalance;
-                    const transactionRate = Number(transaction.purchaseRate || transaction.accountOpeningRate || 0);
-                    const currentRate = getAccountOpeningRate(account);
-                    if (transactionRate > 0 && newBalance > 0) {
-                        if (transaction.type === 'income') {
-                            updates.buyPrice = ((Number(account.balance) * currentRate) - (impact * transactionRate)) / newBalance;
-                        } else {
-                            updates.buyPrice = ((Number(account.balance) * currentRate) + (impact * transactionRate)) / newBalance;
-                        }
-                        updates.openingRate = updates.buyPrice;
+                if (transaction.type === 'sell' && transaction.sellTargetAccountId) {
+                    const revertInvestBalance = Number(account.balance || 0) + Number(transaction.amount || 0);
+                    batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(account.id), {
+                        balance: revertInvestBalance,
+                        quantity: revertInvestBalance
+                    });
+                    const sellTarget = accounts.find(a => a.id === transaction.sellTargetAccountId);
+                    if (sellTarget) {
+                        const revertProceeds = Number(transaction.amount || 0) * Number(transaction.sellRate || transaction.transactionRate || 0);
+                        batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(transaction.sellTargetAccountId), {
+                            balance: Number(sellTarget.balance || 0) - revertProceeds
+                        });
                     }
+                } else {
+                    const impact = transaction.type === 'income'
+                        ? Number(transaction.amount || 0)
+                        : Number(transaction.isInstallment
+                            ? (transaction.installmentTotal || transaction.amount)
+                            : transaction.amount || 0);
+                    const newBalance = transaction.type === 'income'
+                        ? Number(account.balance || 0) - impact
+                        : Number(account.balance || 0) + impact;
+                    const updates = { balance: newBalance };
+                    if (isInvestmentAccount(account)) {
+                        updates.quantity = newBalance;
+                        const transactionRate = Number(transaction.purchaseRate || transaction.accountOpeningRate || 0);
+                        const currentRate = getAccountOpeningRate(account);
+                        if (transactionRate > 0 && newBalance > 0) {
+                            if (transaction.type === 'income') {
+                                updates.buyPrice = ((Number(account.balance) * currentRate) - (impact * transactionRate)) / newBalance;
+                            } else {
+                                updates.buyPrice = ((Number(account.balance) * currentRate) + (impact * transactionRate)) / newBalance;
+                            }
+                            updates.openingRate = updates.buyPrice;
+                        }
+                    }
+                    batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(account.id), updates);
                 }
-                batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(account.id), updates);
             }
             batch.delete(db.collection('users').doc(currentUser.uid).collection('transactions').doc(id));
             if (transaction.isRecurringSource && transaction.recurringId) {

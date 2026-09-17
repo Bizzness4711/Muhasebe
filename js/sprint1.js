@@ -23,6 +23,7 @@ function initQuickAdd() {
         const dateEl = document.getElementById('quickAddDate');
         if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
         modal.style.display = 'flex';
+        updateQuickAddSellFields();
         const amt = document.getElementById('quickAddAmount');
         if (amt) amt.focus();
     });
@@ -36,6 +37,7 @@ function initQuickAdd() {
             btn.classList.add('active');
             quickAddType = btn.dataset.type;
             populateQuickAddSelects();
+            updateQuickAddSellFields();
         });
     });
 
@@ -59,6 +61,15 @@ function initQuickAdd() {
                     rateInfo.hidden = true;
                 }
             }
+            const sellBtn = document.getElementById('quickAddSellBtn');
+            if (sellBtn) sellBtn.style.display = isInvest ? '' : 'none';
+            if (!isInvest && quickAddType === 'sell') {
+                quickAddType = 'expense';
+                typeBtns.forEach(b => b.classList.remove('active'));
+                const expBtn = modal.querySelector('[data-type="expense"]');
+                if (expBtn) expBtn.classList.add('active');
+            }
+            updateQuickAddSellFields();
         });
     }
 
@@ -80,6 +91,25 @@ function initQuickAdd() {
         });
     }
 
+    function updateQuickAddSellFields() {
+        const accSel = document.getElementById('quickAddAccount');
+        const account = accSel ? accounts.find(a => a.id === accSel.value) : null;
+        const isInvest = account && isInvestmentAccount(account);
+        const isSell = quickAddType === 'sell';
+        const sd = document.getElementById('quickAddSellDetails');
+        if (sd) sd.hidden = !(isInvest && isSell);
+        const pd = document.getElementById('quickAddPurchaseDetails');
+        if (pd) pd.hidden = !(isInvest && !isSell);
+        if (isSell && isInvest) {
+            const targetSel = document.getElementById('quickAddSellTarget');
+            if (targetSel && targetSel.options.length <= 1) {
+                const tryAccounts = accounts.filter(a => a.currency === 'TRY' && a.id !== accSel.value);
+                targetSel.innerHTML = '<option value="">Hesap seçin</option>' +
+                    tryAccounts.map(a => `<option value="${a.id}">${a.name} — ₺${Number(a.balance || 0).toFixed(2)}</option>`).join('');
+            }
+        }
+    }
+
     form && form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const amount = parseFloat(document.getElementById('quickAddAmount').value);
@@ -96,10 +126,17 @@ function initQuickAdd() {
         }
 
         const isInvest = isInvestmentAccount(account);
-        const purchaseRate = isInvest ? parseFloat(document.getElementById('quickAddPurchaseRate')?.value) : 0;
-        if (isInvest && !(purchaseRate > 0)) {
+        const isSell = quickAddType === 'sell';
+        const purchaseRate = isInvest && !isSell ? parseFloat(document.getElementById('quickAddPurchaseRate')?.value) : 0;
+        const sellRate = isInvest && isSell ? parseFloat(document.getElementById('quickAddSellRate')?.value) : 0;
+        const sellTargetId = isSell ? document.getElementById('quickAddSellTarget')?.value : '';
+        if (isInvest && !isSell && !(purchaseRate > 0)) {
             showToast('Döviz/altın işlemi için alış fiyatını girin.', 'error');
             return;
+        }
+        if (isSell) {
+            if (!(sellRate > 0)) { showToast('Satış kuru girin.', 'error'); return; }
+            if (!sellTargetId) { showToast('TRY gelir hesabını seçin.', 'error'); return; }
         }
 
         const isInstallment = isCreditType && document.getElementById('quickAddIsInstallment')?.checked;
@@ -134,9 +171,12 @@ function initQuickAdd() {
             accountOpeningRate: openingRate,
             accountOpeningRateDate: account.openingRateDate || null,
             purchaseRate,
-            transactionRate,
+            transactionRate: isSell ? sellRate : transactionRate,
             transactionRateDate: new Date().toISOString(),
-            profitLoss,
+            profitLoss: isSell ? 0 : profitLoss,
+            sellRate: isSell ? sellRate : undefined,
+            sellTargetAccountId: isSell ? sellTargetId : undefined,
+            sellTargetAccountName: isSell ? (accounts.find(a => a.id === sellTargetId)?.name || '') : undefined,
             description: description || 'Açıklama yok',
             date: transactionDate,
             isInstallment,
@@ -154,6 +194,38 @@ function initQuickAdd() {
             const txRef = db.collection('users').doc(currentUser.uid).collection('transactions').doc();
             batch.set(txRef, tx);
 
+            if (isSell && sellTargetId) {
+                const sellAccount = accounts.find(a => a.id === sellTargetId);
+                if (!sellAccount) { showToast('Hedef hesap bulunamadı.', 'error'); return; }
+                const investNewBalance = account.balance - amount;
+                const costBasis = amount * (account.openingRate || account.buyPrice || purchaseRate);
+                const proceeds = amount * sellRate;
+                batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(accountId), {
+                    balance: investNewBalance,
+                    quantity: investNewBalance
+                });
+                batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(sellTargetId), {
+                    balance: Number(sellAccount.balance || 0) + proceeds
+                });
+                batch.update(txRef, { profitLoss: proceeds - costBasis });
+            } else {
+                const newBalance = quickAddType === 'income'
+                    ? account.balance + amount
+                    : account.balance - amount;
+                const accountUpdates = { balance: newBalance };
+                if (isInvest) {
+                    accountUpdates.quantity = newBalance;
+                    if (quickAddType === 'income') {
+                        const oldQuantity = Number(account.quantity ?? account.balance ?? 0);
+                        accountUpdates.buyPrice = oldQuantity > 0
+                            ? ((oldQuantity * openingRate) + (amount * purchaseRate)) / newBalance
+                            : purchaseRate;
+                        accountUpdates.openingRate = accountUpdates.buyPrice;
+                    }
+                }
+                batch.update(db.collection('users').doc(currentUser.uid).collection('accounts').doc(accountId), accountUpdates);
+            }
+
             if (isRecurring && frequency) {
                 const recurRef = db.collection('users').doc(currentUser.uid).collection('recurringTransactions').doc();
                 batch.set(recurRef, {
@@ -169,7 +241,8 @@ function initQuickAdd() {
             }
 
             await batch.commit();
-            showToast(quickAddType === 'income' ? 'Gelir eklendi!' : 'Masraf eklendi!', 'success');
+            const msgMap = { income: 'Gelir eklendi!', expense: 'Masraf eklendi!', sell: 'Satış eklendi!' };
+            showToast(msgMap[quickAddType] || 'İşlem eklendi!', 'success');
             modal.style.display = 'none';
             form.reset();
             typeBtns.forEach(b => b.classList.remove('active'));
@@ -178,12 +251,16 @@ function initQuickAdd() {
             quickAddType = 'expense';
             const pd = document.getElementById('quickAddPurchaseDetails');
             if (pd) pd.hidden = true;
+            const sd = document.getElementById('quickAddSellDetails');
+            if (sd) sd.hidden = true;
             const cd = document.getElementById('quickAddCreditInstallmentDetails');
             if (cd) cd.hidden = true;
             const io = document.getElementById('quickAddInstallmentOptions');
             if (io) io.hidden = true;
             const ro = document.getElementById('quickAddRecurringOptions');
             if (ro) ro.hidden = true;
+            const sellBtn = document.getElementById('quickAddSellBtn');
+            if (sellBtn) sellBtn.style.display = 'none';
             await loadUserData();
         } catch (err) {
             showToast('Hata: ' + err.message, 'error');
