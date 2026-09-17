@@ -291,9 +291,13 @@ function updateTransactionPurchaseFields() {
     if (sellBtn) sellBtn.style.display = isInvest ? '' : 'none';
     if (!isInvest && selectedType === 'sell') {
         selectedType = 'expense';
-        document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
-        const expenseBtn = document.querySelector('.type-btn[data-type="expense"]');
-        if (expenseBtn) expenseBtn.classList.add('active');
+        // ponytail: sadece ana formun butonlarını sıfırla, Quick-Add'i etkileme
+        const mainForm = document.getElementById('transactionForm');
+        if (mainForm) {
+            mainForm.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+            const expenseBtn = mainForm.querySelector('.type-btn[data-type="expense"]');
+            if (expenseBtn) expenseBtn.classList.add('active');
+        }
         updateCategorySelect();
     }
     updateSellFields();

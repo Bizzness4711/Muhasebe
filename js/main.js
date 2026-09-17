@@ -401,17 +401,20 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('installmentOptions').hidden = !e.target.checked;
     });
 
-    // İşlem tipi
-    document.querySelectorAll('.type-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            selectedType = e.target.closest('.type-btn').dataset.type;
-            document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
-            e.target.closest('.type-btn').classList.add('active');
-            updateCategorySelect();
-            if (typeof updateSellFields === 'function') updateSellFields();
-            if (typeof updateTransactionPurchaseFields === 'function') updateTransactionPurchaseFields();
+    // İşlem tipi (sadece ana form — Quick-Add kendi handler'ını kullanır)
+    const mainForm = document.getElementById('transactionForm');
+    if (mainForm) {
+        mainForm.querySelectorAll('.type-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                selectedType = e.target.closest('.type-btn').dataset.type;
+                mainForm.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+                e.target.closest('.type-btn').classList.add('active');
+                updateCategorySelect();
+                if (typeof updateSellFields === 'function') updateSellFields();
+                if (typeof updateTransactionPurchaseFields === 'function') updateTransactionPurchaseFields();
+            });
         });
-    });
+    }
 
     document.getElementById('accountSelect').addEventListener('change', updateAccountRateInfo);
 
