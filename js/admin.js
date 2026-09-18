@@ -5,6 +5,9 @@
   let adminLoaded = false;
   let countsLoaded = false;
   let adminSignupChart = null;
+  let usersNextPageToken = null;
+  let usersPage = 1;
+  const USERS_PAGE_SIZE = 50;
 
   // Tarih formatı (kısa)
   function fmtDate(ts) {
@@ -51,14 +54,18 @@
     if (!body) return;
     try {
       body.innerHTML = '<tr><td colspan="7" class="empty-state">Yükleniyor...</td></tr>';
-      const snap = await db.collection('users').orderBy('createdAt', 'desc').limit(50).get();
+      const query = db.collection('users').orderBy('createdAt', 'desc').limit(USERS_PAGE_SIZE);
+      const snap = usersNextPageToken
+        ? await query.startAfter(usersNextPageToken).get()
+        : await query.get();
       allUsers = [];
       snap.forEach(doc => allUsers.push({ id: doc.id, ...doc.data() }));
+      usersNextPageToken = snap.docs.length === USERS_PAGE_SIZE ? snap.docs[snap.docs.length - 1] : null;
       adminLoaded = true;
       countsLoaded = false;
       await loadCounts();
-      // Sayımlar yalnızca bu 50 kullanıcı için yapılır; daha eski kullanıcılar arama/paginasyon özelliği eklenene kadar yüklenmez.
       renderAdminUsers();
+      updateUserPaginationUI();
       loadStats();
       loadActivity();
       loadSystem();
@@ -96,9 +103,35 @@
     }
   }
 
+  function updateUserPaginationUI() {
+    const prev = document.getElementById('adminUsersPrev');
+    const next = document.getElementById('adminUsersNext');
+    const page = document.getElementById('adminUsersPage');
+    if (prev) prev.disabled = usersPage <= 1;
+    if (next) next.disabled = !usersNextPageToken;
+    if (page) page.textContent = 'Sayfa ' + usersPage;
+  }
+
+  async function loadNextUserPage() {
+    if (!usersNextPageToken) return;
+    usersPage += 1;
+    await window.loadAdminData();
+  }
+
+  async function loadPreviousUserPage() {
+    // Firestore cursor pagination is forward-only with this lightweight client UI.
+    // Reaching previous pages requires retaining cursors; keep a small cursor stack.
+    if (usersPage <= 1) return;
+    usersPage -= 1;
+    usersNextPageToken = null;
+    await window.loadAdminData();
+  }
+
   // "Yenile" sayacı sıfırlar (tekrar çeker)
   async function refreshAll() {
     countsLoaded = false;
+    usersNextPageToken = null;
+    usersPage = 1;
     if (adminSignupChart) { try { adminSignupChart.destroy(); } catch {} adminSignupChart = null; }
     await window.loadAdminData();
   }
@@ -377,6 +410,8 @@
     document.getElementById('refreshAdminBtn')?.addEventListener('click', refreshAll);
     document.getElementById('adminSearch')?.addEventListener('input', renderAdminUsers);
     document.getElementById('adminRoleFilter')?.addEventListener('change', renderAdminUsers);
+    document.getElementById('adminUsersNext')?.addEventListener('click', loadNextUserPage);
+    document.getElementById('adminUsersPrev')?.addEventListener('click', loadPreviousUserPage);
     document.getElementById('adminLink')?.addEventListener('click', () => {
       if (!adminLoaded) window.loadAdminData();
     });
