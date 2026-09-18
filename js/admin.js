@@ -178,7 +178,6 @@
       </tr>`;
     }).join('');
   }
-
   // Kullanıcı detay modalı (hesap listesiyle birlikte)
   window.openAdminDetail = async function (uid) {
     const modal = document.getElementById('adminDetailModal');
@@ -357,8 +356,7 @@
       sysEl.innerHTML = `
         <p><strong>Proje:</strong> ${escapeHtml(projectId)}</p>
         <p><strong>Admin:</strong> ${escapeHtml(email)} <small>(${escapeHtml(uid)})</small></p>
-        <p><strong>Tema:</strong> ${escapeHtml(theme)}</p>
-        <p><strong>Sürüm:</strong> ${escapeHtml(version)}</p>`;
+        <p><strong>Tema:</strong> ${escapeHtml(theme)}</p>        <p><strong>Sürüm:</strong> ${escapeHtml(version)}</p>`;
     }
     const ratesEl = document.getElementById('adminRatesBox');
     if (ratesEl) {
@@ -400,19 +398,57 @@
     } catch (e) { showToast('Hesap silinemedi: ' + e.message, 'error'); }
   };
 
+  // Admin: kullanıcı verilerini Spark planında client-side olarak temizle.
+  // Firebase Authentication hesabı client SDK ile admin tarafından silinemez; bu nedenle
+  // işlem Firestore'daki kullanıcı dokümanı ve bilinen alt koleksiyonları siler.
   window.deleteAdminUser = async function (uid) {
-    if (!confirm('Bu kullanıcıyı tamamen silmek istediğinizden emin misiniz? Firebase Authentication hesabı ve Firestore verileri silinecek.')) return;
+    if (!uid || (typeof currentUser !== 'undefined' && currentUser?.uid === uid)) return;
+    const confirmed = confirm(
+      'Bu kullanıcının Finora içindeki tüm Firestore verileri silinecek.\\n\\n' +
+      'Not: Firebase Authentication hesabı bu ücretsiz yöntemle silinemez; kullanıcı hesabı teknik olarak kalır.\\n\\n' +
+      'Devam etmek istiyor musunuz?'
+    );
+    if (!confirmed) return;
+
+    const subcollections = [
+      'accounts',
+      'transactions',
+      'transfers',
+      'recurringTransactions',
+      'goals',
+      'budgets',
+      'categories',
+      'notifications',
+      'pushTokens',
+      'pushLog'
+    ];
+
     try {
-      if (typeof firebase.functions !== 'function') {
-        throw new Error('Firebase Functions SDK yüklenemedi.');
+      showToast('Kullanıcı verileri siliniyor...', 'info');
+
+      // Firestore batch limiti 500 olduğu için 400'lü paketler halinde ilerle.
+      const deleteCollection = async (collectionRef) => {
+        while (true) {
+          const snap = await collectionRef.limit(400).get();
+          if (snap.empty) break;
+          const batch = db.batch();
+          snap.docs.forEach(doc => batch.delete(doc.ref));
+          await batch.commit();
+          if (snap.size < 400) break;
+        }
+      };
+
+      for (const name of subcollections) {
+        await deleteCollection(db.collection('users').doc(uid).collection(name));
       }
-      const deleteUser = firebase.functions().httpsCallable('deleteUserByAdmin');
-      await deleteUser({ uid });
-      showToast('Kullanıcı ve verileri tamamen silindi.', 'success');
+
+      await db.collection('users').doc(uid).delete();
+
+      showToast('Kullanıcının Firestore verileri silindi. Authentication hesabı ayrı olarak kaldı.', 'success');
       await window.loadAdminData();
     } catch (e) {
-      console.error('Tam kullanıcı silme hatası:', e);
-      showToast('Kullanıcı silinemedi: ' + (e.message || 'Bilinmeyen hata'), 'error');
+      console.error('Admin kullanıcı verisi silme hatası:', e);
+      showToast('Kullanıcı verileri silinemedi: ' + (e.message || 'Bilinmeyen hata'), 'error');
     }
   };
 
