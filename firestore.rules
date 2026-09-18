@@ -59,6 +59,22 @@ service cloud.firestore {
         && (!('limit' in data) || (data.limit is number && data.limit >= 0));
     }
 
+    function validNotification(data) {
+      return (!('key' in data) || data.key is string)
+        && (!('title' in data) || data.title is string)
+        && (!('message' in data) || data.message is string)
+        && (!('icon' in data) || data.icon is string)
+        && (!('read' in data) || data.read is bool)
+        && (!('deleted' in data) || data.deleted is bool)
+        && (!('ts' in data) || data.ts is number)
+        && (!('deletedAt' in data) || data.deletedAt is number);
+    }
+
+    function validPushToken(data) {
+      return (!('platform' in data) || data.platform is string)
+        && (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
     // Kullanıcı profili: rol ve oluşturulma tarihi kullanıcı tarafından ele geçirilemez.
     match /users/{uid} {
       allow read: if isOwner(uid) || isAdmin();
@@ -131,11 +147,15 @@ service cloud.firestore {
       }
 
       match /notifications/{doc} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update: if (isOwner(uid) && validNotification(request.resource.data)) || isAdmin();
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       match /pushTokens/{doc} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update: if (isOwner(uid) && validPushToken(request.resource.data)) || isAdmin();
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       match /pushLog/{doc} {

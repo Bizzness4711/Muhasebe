@@ -51,12 +51,13 @@
     if (!body) return;
     try {
       body.innerHTML = '<tr><td colspan="7" class="empty-state">Yükleniyor...</td></tr>';
-      const snap = await db.collection('users').orderBy('createdAt', 'desc').limit(200).get();
+      const snap = await db.collection('users').orderBy('createdAt', 'desc').limit(50).get();
       allUsers = [];
       snap.forEach(doc => allUsers.push({ id: doc.id, ...doc.data() }));
       adminLoaded = true;
       countsLoaded = false;
       await loadCounts();
+      // Sayımlar yalnızca bu 50 kullanıcı için yapılır; daha eski kullanıcılar arama/paginasyon özelliği eklenene kadar yüklenmez.
       renderAdminUsers();
       loadStats();
       loadActivity();
@@ -67,7 +68,8 @@
     }
   };
 
-  // Hesap/işlem/transfer sayılarını paralel çek, cache'le
+  // Hesap/işlem/transfer sayılarını paralel çek, cache'le.
+  // Yönetim paneli yalnızca son 50 kullanıcıyı yükler; sınırsız kullanıcı taraması ve gereksiz Firestore okumaları önlenir.
   async function loadCounts() {
     if (countsLoaded || !allUsers.length) return;
     try {
