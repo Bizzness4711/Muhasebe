@@ -15,13 +15,51 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    function validUid(uid) {
-      return signedIn() && request.auth.uid == uid;
+    function hasNumber(data, field) {
+      return field in data && data[field] is number;
     }
 
-    // Kullanıcı profili.
-    // Normal kullanıcı yalnızca kendi güvenli profil alanlarını değiştirebilir.
-    // role ve createdAt gibi yetki/sistem alanları kullanıcı tarafından değiştirilemez.
+    function positiveAmount(data) {
+      return hasNumber(data, 'amount') && data.amount > 0;
+    }
+
+    function validTransaction(data) {
+      return positiveAmount(data)
+        && (!('type' in data) || data.type in ['income', 'expense', 'sell'])
+        && (!('date' in data) || data.date is string)
+        && (!('accountId' in data) || data.accountId is string);
+    }
+
+    function validTransfer(data) {
+      return positiveAmount(data)
+        && (!('date' in data) || data.date is string)
+        && (!('fromAccountId' in data) || data.fromAccountId is string)
+        && (!('toAccountId' in data) || data.toAccountId is string);
+    }
+
+    function validAccount(data) {
+      return (!('balance' in data) || data.balance is number)
+        && (!('quantity' in data) || data.quantity is number)
+        && (!('buyPrice' in data) || data.buyPrice is number)
+        && (!('openingRate' in data) || data.openingRate is number)
+        && (!('creditLimit' in data) || data.creditLimit is number)
+        && (!('currency' in data) || data.currency in ['TRY', 'USD', 'EUR', 'GRAM_ALTIN', 'CEYREK_ALTIN'])
+        && (!('type' in data) || data.type is string)
+        && (!('name' in data) || data.name is string);
+    }
+
+    function validGoal(data) {
+      return (!('amount' in data) || (data.amount is number && data.amount > 0))
+        && (!('target' in data) || (data.target is number && data.target > 0))
+        && (!('current' in data) || (data.current is number && data.current >= 0));
+    }
+
+    function validBudget(data) {
+      return (!('amount' in data) || (data.amount is number && data.amount >= 0))
+        && (!('limit' in data) || (data.limit is number && data.limit >= 0));
+    }
+
+    // Kullanıcı profili: rol ve oluşturulma tarihi kullanıcı tarafından ele geçirilemez.
     match /users/{uid} {
       allow read: if isOwner(uid) || isAdmin();
 
@@ -46,49 +84,60 @@ service cloud.firestore {
           ])
         );
 
-      // Profil silme yetkisi yalnızca admin'de.
       allow delete: if isAdmin();
 
-      // Finansal alt koleksiyonlar: kullanıcı yalnızca kendi verisine erişebilir.
-      // Admin erişimi korunur; admin panelinin mevcut işlevleri bozulmaz.
       match /accounts/{doc} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update: if (isOwner(uid) && validAccount(request.resource.data)) || isAdmin();
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       match /transactions/{doc} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update: if (isOwner(uid) && validTransaction(request.resource.data)) || isAdmin();
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       match /transfers/{doc} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update: if (isOwner(uid) && validTransfer(request.resource.data)) || isAdmin();
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       match /recurringTransactions/{doc} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update: if (isOwner(uid) && positiveAmount(request.resource.data)) || isAdmin();
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       match /goals/{doc} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update: if (isOwner(uid) && validGoal(request.resource.data)) || isAdmin();
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       match /budgets/{doc} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update: if (isOwner(uid) && validBudget(request.resource.data)) || isAdmin();
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       match /categories/{doc} {
-        allow read, write: if isOwner(uid) || isAdmin();
+        allow read, delete: if isOwner(uid) || isAdmin();
+        allow create, update: if (isOwner(uid)
+          && request.resource.data.name is string
+          && request.resource.data.type in ['income', 'expense'])
+          || isAdmin();
       }
 
       match /notifications/{doc} {
         allow read, write: if isOwner(uid) || isAdmin();
       }
 
-      // Push tokenlar kullanıcıya aittir. Diğer kullanıcıların tokenlarına erişim yoktur.
       match /pushTokens/{doc} {
         allow read, write: if isOwner(uid) || isAdmin();
       }
 
-      // pushLog yalnızca sunucu/Admin SDK tarafından yazılabilir.
       match /pushLog/{doc} {
         allow read: if isOwner(uid) || isAdmin();
         allow write: if false;
