@@ -400,12 +400,20 @@
     } catch (e) { showToast('Hesap silinemedi: ' + e.message, 'error'); }
   };
 
-  window.deleteAdminUser = async function (uid) {    if (!confirm('Bu kullanıcının Firestore kaydını sileyim mi? (Auth kaydı silinmez, kullanıcı tekrar giriş yapabilir. Tam silme için Firebase Console > Authentication kullanın.)')) return;
+  window.deleteAdminUser = async function (uid) {
+    if (!confirm('Bu kullanıcıyı tamamen silmek istediğinizden emin misiniz? Firebase Authentication hesabı ve Firestore verileri silinecek.')) return;
     try {
-      await db.collection('users').doc(uid).delete();
-      showToast('Kullanıcı kaydı silindi.', 'success');
+      if (typeof firebase.functions !== 'function') {
+        throw new Error('Firebase Functions SDK yüklenemedi.');
+      }
+      const deleteUser = firebase.functions().httpsCallable('deleteUserByAdmin');
+      await deleteUser({ uid });
+      showToast('Kullanıcı ve verileri tamamen silindi.', 'success');
       await window.loadAdminData();
-    } catch (e) { showToast('Silinemedi: ' + e.message, 'error'); }
+    } catch (e) {
+      console.error('Tam kullanıcı silme hatası:', e);
+      showToast('Kullanıcı silinemedi: ' + (e.message || 'Bilinmeyen hata'), 'error');
+    }
   };
 
   document.addEventListener('DOMContentLoaded', () => {
