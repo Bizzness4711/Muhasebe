@@ -1,33 +1,98 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
-    function isAdmin() {
-      return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+
+    function signedIn() {
+      return request.auth != null;
     }
 
-    // Kullanıcı profili: kendin okuyabilirsin, admin hepsini listeleyebilir.
-    // İlk admini Firebase Console'dan manuel ver: users/{uid} -> role = "admin"
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function validUid(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // Kullanıcı profili.
+    // Normal kullanıcı yalnızca kendi güvenli profil alanlarını değiştirebilir.
+    // role ve createdAt gibi yetki/sistem alanları kullanıcı tarafından değiştirilemez.
     match /users/{uid} {
       allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid) && (!('role' in request.resource.data) || request.resource.data.role == 'user');
-      // Rol alanını sadece admin değiştirebilir, normal kullanıcı değiştiremez.
-      allow update: if (isOwner(uid) && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)) || isAdmin();
+
+      allow create: if isOwner(uid)
+        && (!('role' in request.resource.data) || request.resource.data.role == 'user')
+        && (!('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp);
+
+      allow update: if isAdmin()
+        || (
+          isOwner(uid)
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name',
+            'currency',
+            'currentMonth',
+            'selectedAccounts',
+            'themeColor',
+            'privacyModeEnabled',
+            'lastLoginAt'
+          ])
+        );
+
+      // Profil silme yetkisi yalnızca admin'de.
       allow delete: if isAdmin();
 
-      match /accounts/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
-      match /transactions/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
-      match /transfers/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
-      match /recurringTransactions/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
-      match /goals/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
-      match /budgets/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
-      match /categories/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
-      // Bildirimler: haftalık otomatik temizlik istemcide yapılır, admin görebilir.
-      match /notifications/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
-      // Push token: cihaz kendi tokenını yazar. pushLog'u sadece sunucu (Admin SDK) yazar.
-      match /pushTokens/{doc} { allow read, write: if isOwner(uid) || isAdmin(); }
-      match /pushLog/{doc} { allow read: if isOwner(uid) || isAdmin(); allow write: if false; }
+      // Finansal alt koleksiyonlar: kullanıcı yalnızca kendi verisine erişebilir.
+      // Admin erişimi korunur; admin panelinin mevcut işlevleri bozulmaz.
+      match /accounts/{doc} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /transactions/{doc} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /transfers/{doc} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /recurringTransactions/{doc} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /goals/{doc} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /budgets/{doc} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /categories/{doc} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      match /notifications/{doc} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      // Push tokenlar kullanıcıya aittir. Diğer kullanıcıların tokenlarına erişim yoktur.
+      match /pushTokens/{doc} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      // pushLog yalnızca sunucu/Admin SDK tarafından yazılabilir.
+      match /pushLog/{doc} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow write: if false;
+      }
     }
   }
 }
