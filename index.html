@@ -771,7 +771,7 @@
                                     <option value="admin">Admin</option>
                                     <option value="user">User</option>
                                 </select>
-                                <small id="adminCount"></small>
+                                <small id="adminCount"></small><div class="admin-pagination" role="navigation" aria-label="Kullanıcı sayfaları"><button id="adminUsersPrev" class="admin-mini-btn" type="button">‹ Önceki</button><span id="adminUsersPage">Sayfa 1</span><button id="adminUsersNext" class="admin-mini-btn" type="button">Sonraki ›</button></div>
                             </div>
                             <div class="table-scroll"><table class="advanced-report-table"><thead><tr><th>Kullanıcı</th><th>E-posta</th><th>Rol</th><th>Hesap sayısı</th><th>İşlem sayısı</th><th>Kayıt</th><th>İşlemler</th></tr></thead><tbody id="adminUsersBody"></tbody></table></div>
                             <p class="hint-text">Rol bilgisi <code>users/{uid}</code> dokümanındaki <code>role</code> alanından okunur (<code>admin</code> / <code>user</code>). İlk admini Firestore Console'dan manuel verin.</p>
