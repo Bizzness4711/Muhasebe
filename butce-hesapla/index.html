@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bütçe Hesaplama | Gelir-Gider Analizi - Finora</title>
+    <meta name="description" content="Kişisel bütçenizi hesaplayın. Gelir, sabit ve değişken giderlerinizi girin, 50/30/20 kuralına göre analiz görün. Ücretsiz online araç.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://bizzness4711.github.io/Muhasebe/butce-hesapla/">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Bütçe Hesaplama | Gelir-Gider Analizi - Finora">
+    <meta property="og:description" content="Kişisel bütçenizi hesaplayın. Gelir, sabit ve değişken giderlerinizi girin, 50/30/20 kuralına göre analiz görün.">
+    <meta property="og:url" content="https://bizzness4711.github.io/Muhasebe/butce-hesapla/">
+    <meta property="og:site_name" content="Finora">
+    <meta property="og:locale" content="tr_TR">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Bütçe Hesaplama | Gelir-Gider Analizi - Finora">
+    <meta name="twitter:description" content="Kişisel bütçenizi hesaplayın. Gelir, sabit ve değişken giderlerinizi girin, 50/30/20 kuralına göre analiz görün.">
+
+    <!-- JSON-LD -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Finora Bütçe Hesaplama",
+        "operatingSystem": "Web",
+        "applicationCategory": "FinanceApplication",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "TRY" },
+        "description": "Ücretsiz kişisel bütçe hesaplama aracı. Gelir ve giderlerinizi analiz edin."
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4f46c7;
+            --primary-hover: #4338b8;
+            --secondary: #3b82f6;
+            --background: #f4f5fb;
+            --surface: #ffffff;
+            --surface-2: #eef0f8;
+            --text: #1e2235;
+            --muted: #6e7190;
+            --success: #159a72;
+            --warning: #d08a25;
+            --danger: #d95768;
+            --border: #e4e6f0;
+            --radius: 14px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--background); color: var(--text); line-height: 1.7; -webkit-font-smoothing: antialiased; }
+
+        /* Nav */
+        .lp-nav { position: sticky; top: 0; z-index: 100; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 0 24px; }
+        .lp-nav-inner { max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+        .lp-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; color: var(--text); text-decoration: none; }
+        .lp-brand-mark { width: 36px; height: 36px; border-radius: 10px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1rem; }
+        .lp-nav-links { display: flex; gap: 24px; align-items: center; }
+        .lp-nav-links a { font-size: 0.88rem; font-weight: 500; color: var(--muted); text-decoration: none; transition: color 0.2s; }
+        .lp-nav-links a:hover, .lp-nav-links a.active { color: var(--primary); }
+        .lp-cta-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 22px; border-radius: 10px; background: var(--primary); color: #fff; font-weight: 600; font-size: 0.88rem; text-decoration: none; transition: background 0.2s, transform 0.15s; }
+        .lp-cta-btn:hover { background: var(--primary-hover); transform: translateY(-1px); }
+        .lp-mobile-toggle { display: none; background: none; border: none; font-size: 1.4rem; color: var(--text); cursor: pointer; }
+
+        /* Hero */
+        .lp-hero { max-width: 1120px; margin: 0 auto; padding: 64px 24px 32px; text-align: center; }
+        .lp-hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; line-height: 1.2; margin-bottom: 16px; }
+        .lp-hero h1 em { font-style: normal; color: var(--primary); }
+        .lp-hero p { font-size: 1.1rem; color: var(--muted); max-width: 640px; margin: 0 auto 32px; }
+
+        /* Calculator */
+        .calc-wrapper { max-width: 1120px; margin: 0 auto; padding: 0 24px 48px; }
+        .calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .calc-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; }
+        .calc-card h2 { font-size: 1.15rem; font-weight: 700; margin-bottom: 20px; }
+        .calc-field { margin-bottom: 16px; }
+        .calc-field label { display: block; font-size: 0.88rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+        .calc-field input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 1rem; font-family: inherit; transition: border-color 0.2s; outline: none; }
+        .calc-field input:focus { border-color: var(--primary); }
+        .calc-field .hint { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+        .calc-btn { width: 100%; padding: 14px; border: none; border-radius: 12px; background: var(--primary); color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s, transform 0.15s; }
+        .calc-btn:hover { background: var(--primary-hover); transform: translateY(-1px); }
+        .calc-btn:active { transform: translateY(0); }
+
+        /* Results */
+        .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; }
+        .result-card h2 { font-size: 1.15rem; font-weight: 700; margin-bottom: 20px; }
+        .result-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+        .result-row:last-child { border-bottom: none; }
+        .result-label { font-size: 0.95rem; color: var(--muted); }
+        .result-value { font-size: 1.1rem; font-weight: 700; }
+        .result-value.positive { color: var(--success); }
+        .result-value.negative { color: var(--danger); }
+        .result-value.neutral { color: var(--text); }
+
+        /* Progress bars */
+        .progress-group { margin-top: 20px; }
+        .progress-item { margin-bottom: 16px; }
+        .progress-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.88rem; }
+        .progress-header span:first-child { font-weight: 600; }
+        .progress-header span:last-child { color: var(--muted); }
+        .progress-bar { width: 100%; height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 5px; transition: width 0.5s ease; }
+        .progress-fill.green { background: var(--success); }
+        .progress-fill.blue { background: var(--secondary); }
+        .progress-fill.orange { background: var(--warning); }
+        .progress-fill.red { background: var(--danger); }
+        .progress-fill.purple { background: var(--primary); }
+
+        /* 50/30/20 */
+        .rule-section { margin-top: 24px; padding: 20px; background: var(--surface-2); border-radius: 12px; }
+        .rule-section h3 { font-size: 1rem; font-weight: 700; margin-bottom: 12px; }
+        .rule-bars { display: flex; gap: 12px; align-items: flex-end; height: 120px; }
+        .rule-bar-wrapper { flex: 1; text-align: center; }
+        .rule-bar { width: 100%; border-radius: 8px 8px 0 0; transition: height 0.5s ease; min-height: 4px; }
+        .rule-label { font-size: 0.75rem; color: var(--muted); margin-top: 6px; }
+        .rule-pct { font-size: 0.85rem; font-weight: 700; margin-top: 2px; }
+
+        .hidden { display: none; }
+
+        /* Sections */
+        .lp-section { max-width: 1120px; margin: 0 auto; padding: 48px 24px; }
+        .lp-section-title { font-size: 1.6rem; font-weight: 700; margin-bottom: 12px; }
+        .lp-section-desc { color: var(--muted); font-size: 1.05rem; margin-bottom: 32px; max-width: 720px; }
+        .lp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+        .lp-card { background: var(--surface); border-radius: var(--radius); padding: 28px; border: 1px solid var(--border); transition: box-shadow 0.2s, transform 0.2s; }
+        .lp-card:hover { box-shadow: 0 18px 48px rgba(31,34,63,0.14); transform: translateY(-2px); }
+        .lp-card-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; margin-bottom: 16px; }
+        .lp-card-icon.green { background: rgba(21,154,114,0.1); color: var(--success); }
+        .lp-card-icon.blue { background: rgba(59,130,246,0.1); color: var(--secondary); }
+        .lp-card-icon.purple { background: rgba(79,70,199,0.1); color: var(--primary); }
+        .lp-card-icon.orange { background: rgba(208,138,37,0.1); color: var(--warning); }
+        .lp-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 8px; }
+        .lp-card p { color: var(--muted); font-size: 0.95rem; line-height: 1.6; }
+
+        /* FAQ */
+        .lp-faq { max-width: 720px; margin: 0 auto; }
+        .lp-faq-item { border-bottom: 1px solid var(--border); }
+        .lp-faq-item summary { padding: 20px 0; font-size: 1.05rem; font-weight: 600; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+        .lp-faq-item summary::after { content: '+'; font-size: 1.4rem; color: var(--muted); transition: transform 0.2s; }
+        .lp-faq-item[open] summary::after { transform: rotate(45deg); }
+        .lp-faq-item p { color: var(--muted); font-size: 0.95rem; line-height: 1.7; padding-bottom: 20px; }
+
+        /* CTA */
+        .lp-cta-banner { background: var(--primary); color: #fff; border-radius: 20px; padding: 48px 32px; text-align: center; margin: 48px auto; max-width: 1120px; }
+        .lp-cta-banner h2 { font-size: 1.6rem; font-weight: 700; margin-bottom: 12px; }
+        .lp-cta-banner p { opacity: 0.9; margin-bottom: 24px; font-size: 1.05rem; }
+        .lp-cta-banner .lp-hero-btn { display: inline-flex; padding: 14px 32px; border-radius: 12px; background: #fff; color: var(--primary); font-weight: 600; font-size: 1rem; text-decoration: none; transition: background 0.2s, transform 0.15s; }
+        .lp-cta-banner .lp-hero-btn:hover { background: #f0eeff; transform: translateY(-1px); }
+
+        /* Footer */
+        .lp-footer { background: var(--surface); border-top: 1px solid var(--border); padding: 48px 24px 32px; margin-top: 64px; }
+        .lp-footer-inner { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 2fr repeat(3, 1fr); gap: 40px; }
+        .lp-footer-brand p { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+        .lp-footer-col h4 { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 12px; }
+        .lp-footer-col a { display: block; font-size: 0.9rem; color: var(--text); padding: 4px 0; text-decoration: none; }
+        .lp-footer-col a:hover { color: var(--primary); }
+        .lp-footer-bottom { max-width: 1120px; margin: 24px auto 0; padding-top: 24px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--muted); flex-wrap: wrap; gap: 8px; }
+
+        @media (max-width: 768px) {
+            .lp-nav-links { display: none; }
+            .lp-nav-links.open { display: flex; flex-direction: column; position: absolute; top: 64px; left: 0; right: 0; background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px; gap: 12px; box-shadow: 0 8px 24px rgba(31,34,63,0.06); }
+            .lp-mobile-toggle { display: block; }
+            .calc-grid { grid-template-columns: 1fr; }
+            .lp-footer-inner { grid-template-columns: 1fr; gap: 24px; }
+            .lp-footer-bottom { flex-direction: column; text-align: center; }
+            .rule-bars { height: 80px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Nav -->
+    <nav class="lp-nav">
+        <div class="lp-nav-inner">
+            <a href="../" class="lp-brand"><span class="lp-brand-mark">F</span> Finora</a>
+            <button class="lp-mobile-toggle" onclick="document.querySelector('.lp-nav-links').classList.toggle('open')" aria-label="Menü">☰</button>
+            <div class="lp-nav-links">
+                <a href="../butce/">Bütçe</a>
+                <a href="../gelir-gider/">Gelir-Gider</a>
+                <a href="../harcama/">Harcama</a>
+                <a href="../birikim/">Birikim</a>
+                <a href="../altin/">Altın</a>
+                <a href="../yatirim/">Yatırım</a>
+                <a href="../butce-hesapla/" class="active">Bütçe Hesapla</a>
+                <a href="../" class="lp-cta-btn">Ücretsiz Başla</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="lp-hero">
+        <h1>Bütçenizi <em>Hesaplayın</em>, Kontrolü Elinize Alın</h1>
+        <p>Gelirinizi, sabit ve değişken giderlerinizi girin; Finora'nın bütçe hesaplama aracı size anında analiz versin.</p>
+    </section>
+
+    <!-- Calculator -->
+    <section class="calc-wrapper">
+        <div class="calc-grid">
+            <!-- Input -->
+            <div class="calc-card">
+                <h2>📋 Bilgilerinizi Girin</h2>
+                <div class="calc-field">
+                    <label for="gelir">Aylık Gelir (₺)</label>
+                    <input type="number" id="gelir" placeholder="ör. 25000" min="0" step="100">
+                    <div class="hint">Maaş, serbest gelir, kira geliri vb.</div>
+                </div>
+                <div class="calc-field">
+                    <label for="sabitGider">Sabit Giderler (₺)</label>
+                    <input type="number" id="sabitGider" placeholder="ör. 12000" min="0" step="100">
+                    <div class="hint">Kira, faturalar, abonelikler, taksitler</div>
+                </div>
+                <div class="calc-field">
+                    <label for="degiskenGider">Değişken Giderler (₺)</label>
+                    <input type="number" id="degiskenGider" placeholder="ör. 5000" min="0" step="100">
+                    <div class="hint">Market, yeme-içme, eğlence, alışveriş</div>
+                </div>
+                <div class="calc-field">
+                    <label for="birikimHedefi">Birikim Hedefi (₺)</label>
+                    <input type="number" id="birikimHedefi" placeholder="ör. 3000" min="0" step="100">
+                    <div class="hint">Bu ay ne kadar birikim yapmak istiyorsunuz?</div>
+                </div>
+                <button class="calc-btn" onclick="hesapla()">Hesapla</button>
+            </div>
+
+            <!-- Results -->
+            <div id="resultArea" class="result-card hidden">
+                <h2>📊 Sonuçlar</h2>
+                <div class="result-row">
+                    <span class="result-label">Toplam Gelir</span>
+                    <span class="result-value neutral" id="res-gelir">₺0</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Toplam Gider</span>
+                    <span class="result-value neutral" id="res-gider">₺0</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Kalan Tutar</span>
+                    <span class="result-value" id="res-kalan">₺0</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Birikim Hedefi</span>
+                    <span class="result-value neutral" id="res-birikim">₺0</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Gerçek Birikim</span>
+                    <span class="result-value" id="res-gercek-birikim">₺0</span>
+                </div>
+
+                <div class="progress-group">
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span>Sabit Gider / Gelir</span>
+                            <span id="pct-sabit">0%</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill blue" id="bar-sabit" style="width:0%"></div></div>
+                    </div>
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span>Değişken Gider / Gelir</span>
+                            <span id="pct-degisken">0%</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill orange" id="bar-degisken" style="width:0%"></div></div>
+                    </div>
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span>Birikim Oranı</span>
+                            <span id="pct-birikim">0%</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill green" id="bar-birikim" style="width:0%"></div></div>
+                    </div>
+                </div>
+
+                <!-- 50/30/20 Rule -->
+                <div class="rule-section">
+                    <h3>50/30/20 Kuralı Karşılaştırması</h3>
+                    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:12px;">Gelirinizin %50'i ihtiyaç, %30'u istek, %20'si birikim olmalı.</p>
+                    <div class="rule-bars">
+                        <div class="rule-bar-wrapper">
+                            <div class="rule-bar" id="rule-ihtiyac" style="height:0%;background:var(--primary);"></div>
+                            <div class="rule-label">İhtiyaç</div>
+                            <div class="rule-pct" id="rule-pct-ihtiyac">0%</div>
+                        </div>
+                        <div class="rule-bar-wrapper">
+                            <div class="rule-bar" id="rule-istek" style="height:0%;background:var(--secondary);"></div>
+                            <div class="rule-label">İstek</div>
+                            <div class="rule-pct" id="rule-pct-istek">0%</div>
+                        </div>
+                        <div class="rule-bar-wrapper">
+                            <div class="rule-bar" id="rule-birikim" style="height:0%;background:var(--success);"></div>
+                            <div class="rule-label">Birikim</div>
+                            <div class="rule-pct" id="rule-pct-birikim">0%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why Budget Calculator -->
+    <section class="lp-section">
+        <h2 class="lp-section-title">Bütçe Hesaplama Neden Önemlidir?</h2>
+        <p class="lp-section-desc">Gelirinizi harcamadan önce planlamak, finansal özgürlüğün ilk adımıdır.</p>
+        <div class="lp-cards">
+            <div class="lp-card">
+                <div class="lp-card-icon green">📈</div>
+                <h3>Net Durumu Görün</h3>
+                <p>Ne kadar kazanıp ne kadar harcadığınızı net bir şekilde hesaplayın. Sayılar üzerinde tam kontrol sahibi olun.</p>
+            </div>
+            <div class="lp-card">
+                <div class="lp-card-icon blue">🎯</div>
+                <h3>Hedef Koyun</h3>
+                <p>Birikim hedefiniz ile gerçek durumunuzu karşılaştırın. Hedefinize ulaşmak için ne kadar harcama yapabileceğinizi bilin.</p>
+            </div>
+            <div class="lp-card">
+                <div class="lp-card-icon purple">⚖️</div>
+                <h3>Dengeyi Kurun</h3>
+                <p>50/30/20 kuralı gibi kanıtlanmış yöntemlerle gelirinizi akıllıca bölebilirsiniz.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- 50/30/20 Explained -->
+    <section class="lp-section">
+        <h2 class="lp-section-title">50/30/20 Bütçe Kuralı Nedir?</h2>
+        <p class="lp-section-desc">Gelirinizi üç kategoriye ayırarak basit ve etkili bir bütçe planı oluşturabilirsiniz.</p>
+        <div class="lp-cards">
+            <div class="lp-card">
+                <div class="lp-card-icon purple">🏠</div>
+                <h3>%50 İhtiyaçlar</h3>
+                <p>Kira, fatura, market, ulaşım gibi temel giderleriniz gelirinizin yarısını aşmamalı.</p>
+            </div>
+            <div class="lp-card">
+                <div class="lp-card-icon blue">🎮</div>
+                <h3>%30 İstekler</h3>
+                <p>Eğlence, tatil, dışarıda yemek, abonelikler gibi yaşam kalitenizi artıran harcamalar.</p>
+            </div>
+            <div class="lp-card">
+                <div class="lp-card-icon green">💰</div>
+                <h3>%20 Birikim</h3>
+                <p>Acil durum fonu, yatırım, borç ödeme. Geleceğiniz için ayırdığınız kısım.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="lp-section">
+        <h2 class="lp-section-title">Sıkça Sorulan Sorular</h2>
+        <div class="lp-faq">
+            <details class="lp-faq-item">
+                <summary>Bütçe hesaplama aracı tam olarak ne yapar?</summary>
+                <p>Aylık gelirinizi, sabit ve değişken giderlerinizi girdiğinizde toplam giderinizi, kalan tutarınızı ve birikim oranınızı hesaplar. Ayrıca 50/30/20 kuralına göre harcama dağılımınızı görsel olarak karşılaştırır.</p>
+            </details>
+            <details class="lp-faq-item">
+                <summary>50/30/20 kuralı herkes için uygun mu?</summary>
+                <p>Bu kural genel bir başlangıç noktasıdır. Yüksek borçları olanlar veya düşük gelirliler oranları kendi durumlarına göre ayarlayabilir. Önemli olan gelirin tamamını harcamamaktır.</p>
+            </details>
+            <details class="lp-faq-item">
+                <summary>Sabit gider ve değişken gider arasındaki fark nedir?</summary>
+                <p>Sabit giderler her ay aynı tutarda ödenen kalemlerdir (kira, taksit, abonelik). Değişken giderler ise her ay farklılık gösteren harcamalardır (market, yeme-içme, eğlence).</p>
+            </details>
+            <details class="lp-faq-item">
+                <summary>Birikim hedefimi aşarsam ne olur?</summary>
+                <p>Hesaplama aracı gerçek birikiminizin hedefinizi aşıp aşmadığını gösterir. Hedefinizden fazla biriktiriyorsanız bu olumlu bir durumdur ve yatırım seçeneklerini değerlendirebilirsiniz.</p>
+            </details>
+            <details class="lp-faq-item">
+                <summary>Bu araç verilerimi kaydediyor mu?</summary>
+                <p>Hayır. Tüm hesaplamalar tarayıcınızda gerçekleştirilir. Hiçbir veri sunuculara gönderilmez veya saklanmaz. Tamamen gizlilik içinde çalışır.</p>
+            </details>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <div class="lp-cta-banner">
+        <h2>Bütçenizi Hemen Oluşturmaya Başlayın</h2>
+        <p>Finora ile gelir-gider takibi yapın, birikim hedeflerinizi belirleyin ve finansal durumunuzu kontrol altına alın.</p>
+        <a href="../" class="lp-hero-btn">Finora'ya Ücretsiz Başla</a>
+    </div>
+
+    <!-- Footer -->
+    <footer class="lp-footer">
+        <div class="lp-footer-inner">
+            <div class="lp-footer-brand">
+                <a href="../" class="lp-brand"><span class="lp-brand-mark">F</span> Finora</a>
+                <p>Kişisel finans ve bütçe yönetimi için ücretsiz araç.</p>
+            </div>
+            <div class="lp-footer-col">
+                <h4>Ürün Özellikleri</h4>
+                <a href="../butce/">Bütçe Takip</a>
+                <a href="../gelir-gider/">Gelir-Gider</a>
+                <a href="../harcama/">Harcama Takibi</a>
+                <a href="../birikim/">Birikim</a>
+            </div>
+            <div class="lp-footer-col">
+                <h4>Yatırım</h4>
+                <a href="../altin/">Altın Takip</a>
+                <a href="../yatirim/">Yatırım Takibi</a>
+                <a href="../butce-hesapla/">Bütçe Hesapla</a>
+            </div>
+            <div class="lp-footer-col">
+                <h4>Kaynaklar</h4>
+                <a href="../butce-hesapla/">Bütçe Hesaplama</a>
+                <a href="../">Finora'ya Dön</a>
+            </div>
+        </div>
+        <div class="lp-footer-bottom">
+            <span>&copy; 2026 Finora. Tüm hakları saklıdır.</span>
+            <span><a href="../" style="color:var(--primary);text-decoration:none;">Finora</a> ile kişisel finansınızı yönetin.</span>
+        </div>
+    </footer>
+
+    <script>
+    function hesapla() {
+        var gelir = parseFloat(document.getElementById('gelir').value) || 0;
+        var sabitGider = parseFloat(document.getElementById('sabitGider').value) || 0;
+        var degiskenGider = parseFloat(document.getElementById('degiskenGider').value) || 0;
+        var birikimHedefi = parseFloat(document.getElementById('birikimHedefi').value) || 0;
+
+        if (gelir <= 0) { alert('Lütfen geçerli bir gelir tutarı girin.'); return; }
+
+        var toplamGider = sabitGider + degiskenGider;
+        var kalan = gelir - toplamGider;
+        var gercekBirikim = Math.max(kalan, 0);
+        var birikimOrani = ((gercekBirikim / gelir) * 100).toFixed(1);
+        var sabitOrani = ((sabitGider / gelir) * 100).toFixed(1);
+        var degiskenOrani = ((degiskenGider / gelir) * 100).toFixed(1);
+
+        document.getElementById('res-gelir').textContent = '₺' + gelir.toLocaleString('tr-TR');
+        document.getElementById('res-gider').textContent = '₺' + toplamGider.toLocaleString('tr-TR');
+        document.getElementById('res-birikim').textContent = '₺' + birikimHedefi.toLocaleString('tr-TR');
+
+        var kalanEl = document.getElementById('res-kalan');
+        kalanEl.textContent = '₺' + kalan.toLocaleString('tr-TR');
+        kalanEl.className = 'result-value ' + (kalan >= 0 ? 'positive' : 'negative');
+
+        var gercekEl = document.getElementById('res-gercek-birikim');
+        gercekEl.textContent = '₺' + gercekBirikim.toLocaleString('tr-TR');
+        gercekEl.className = 'result-value ' + (gercekBirikim >= birikimHedefi ? 'positive' : 'negative');
+
+        document.getElementById('pct-sabit').textContent = sabitOrani + '%';
+        document.getElementById('bar-sabit').style.width = Math.min(sabitOrani, 100) + '%';
+        document.getElementById('pct-degisken').textContent = degiskenOrani + '%';
+        document.getElementById('bar-degisken').style.width = Math.min(degiskenOrani, 100) + '%';
+        document.getElementById('pct-birikim').textContent = birikimOrani + '%';
+        document.getElementById('bar-birikim').style.width = Math.min(birikimOrani, 100) + '%';
+
+        // 50/30/20
+        var ihtiyacOrani = ((sabitGider / gelir) * 100).toFixed(1);
+        var istekOrani = ((degiskenGider / gelir) * 100).toFixed(1);
+
+        document.getElementById('rule-ihtiyac').style.height = Math.min(ihtiyacOrani, 100) + '%';
+        document.getElementById('rule-pct-ihtiyac').textContent = ihtiyacOrani + '%';
+        document.getElementById('rule-istek').style.height = Math.min(istekOrani, 100) + '%';
+        document.getElementById('rule-pct-istek').textContent = istekOrani + '%';
+        document.getElementById('rule-birikim').style.height = Math.min(birikimOrani, 100) + '%';
+        document.getElementById('rule-pct-birikim').textContent = birikimOrani + '%';
+
+        document.getElementById('resultArea').classList.remove('hidden');
+        document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Enter key triggers calculation
+    document.querySelectorAll('.calc-field input').forEach(function(input) {
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') hesapla();
+        });
+    });
+    </script>
+</body>
+</html>
