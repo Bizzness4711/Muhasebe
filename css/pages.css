@@ -60,7 +60,7 @@
 }
 
 /* Finora brand system */
-.finora-logo-mark {
+.parnex-logo-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -80,7 +80,7 @@
   line-height: 1;
   box-shadow: 0 5px 13px rgba(98, 86, 217, 0.28);
 }
-.auth-brand .finora-logo-mark {
+.auth-brand .parnex-logo-mark {
   width: 30px;
   height: 30px;
   border-radius: 9px;
@@ -110,7 +110,7 @@
   font-size: 1.05rem;
   letter-spacing: -0.02em;
 }
-.sidebar-brand .finora-logo-mark {
+.sidebar-brand .parnex-logo-mark {
   width: 32px;
   height: 32px;
   border-radius: 9px;
