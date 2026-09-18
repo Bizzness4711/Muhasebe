@@ -7,6 +7,7 @@
   let adminSignupChart = null;
   let usersNextPageToken = null;
   let usersPage = 1;
+  const userPageCursors = [null];
   const USERS_PAGE_SIZE = 50;
 
   // Tarih formatı (kısa)
@@ -55,12 +56,12 @@
     try {
       body.innerHTML = '<tr><td colspan="7" class="empty-state">Yükleniyor...</td></tr>';
       const query = db.collection('users').orderBy('createdAt', 'desc').limit(USERS_PAGE_SIZE);
-      const snap = usersNextPageToken
-        ? await query.startAfter(usersNextPageToken).get()
-        : await query.get();
+      const pageCursor = userPageCursors[usersPage - 1] || null;
+      const snap = pageCursor ? await query.startAfter(pageCursor).get() : await query.get();
       allUsers = [];
       snap.forEach(doc => allUsers.push({ id: doc.id, ...doc.data() }));
       usersNextPageToken = snap.docs.length === USERS_PAGE_SIZE ? snap.docs[snap.docs.length - 1] : null;
+      if (usersPage >= userPageCursors.length) userPageCursors.push(usersNextPageToken);
       adminLoaded = true;
       countsLoaded = false;
       await loadCounts();
@@ -132,6 +133,8 @@
     countsLoaded = false;
     usersNextPageToken = null;
     usersPage = 1;
+    userPageCursors.length = 1;
+    userPageCursors[0] = null;
     if (adminSignupChart) { try { adminSignupChart.destroy(); } catch {} adminSignupChart = null; }
     await window.loadAdminData();
   }
