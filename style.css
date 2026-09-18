@@ -187,13 +187,13 @@ select:focus-visible {
   letter-spacing: 0.14em;
   color: #a8a2ff;
 }
-.auth-visual-copy h1 {
+.auth-visual-copy h2 {
   margin: 14px 0;
   font-size: clamp(2.1rem, 4vw, 3.4rem);
   line-height: 1.05;
   letter-spacing: -0.05em;
 }
-.auth-visual-copy h1 em {
+.auth-visual-copy h2 em {
   color: #cfcaff;
   font-style: normal;
 }
